@@ -219,7 +219,7 @@ func TestEscalateWidensWithoutMovingTheTask(t *testing.T) {
 			},
 		},
 		{
-			name: "escalation releases the sweeper's lease",
+			name: "escalation keeps the sweeper's lease as its back-off",
 			task: func() hmntsk.Task {
 				task := fixture(hmntsk.StatusReady)
 				until := testNow.Add(time.Minute)
@@ -233,8 +233,11 @@ func TestEscalateWidensWithoutMovingTheTask(t *testing.T) {
 			},
 			assert: func(t *testing.T, next hmntsk.Task, _ []hmntsk.Event, err error) {
 				require.NoError(t, err)
-				assert.Empty(t, next.LockedBy)
-				assert.Nil(t, next.LockedUntil)
+				assert.Equal(t, "sweeper-1", next.LockedBy,
+					"widening does not move the deadline, so without the lease the next sweep "+
+						"would escalate the same task again a moment later")
+				require.NotNil(t, next.LockedUntil)
+				require.NotNil(t, next.EscalatedAt)
 			},
 		},
 	})

@@ -235,6 +235,12 @@ func (t Task) Resume(actor, comment string, now time.Time) (Task, []Event, error
 // obsolescence event comes from. A nil policy, or one that names no action,
 // only announces.
 //
+// The escalation lease is deliberately left in place. Widening does not move
+// the deadline, so the task is still overdue the instant this returns; without
+// the lease the next sweep would escalate it again immediately, and again after
+// that. Leaving the lease to expire gives one escalation per lease period,
+// which is the back-off, and a policy's MaxEscalations caps the total.
+//
 // The engine notifies nobody. Choosing a channel and sending a message belongs
 // to a consumer of the event this produces.
 func (t Task) Escalate(actor string, policy *EscalationPolicy, comment string, now time.Time) (Task, []Event, error) {
@@ -254,8 +260,6 @@ func (t Task) Escalate(actor string, policy *EscalationPolicy, comment string, n
 	next, events := t.record(OpEscalate, t.Status, actor, comment, now, func(next *Task) {
 		next.EscalationCount = t.EscalationCount + 1
 		next.EscalatedAt = timePtr(now)
-		next.LockedBy = ""
-		next.LockedUntil = nil
 
 		if policy != nil && policy.Action == EscalationWiden {
 			next.Candidates.Users = appendMissing(next.Candidates.Users, policy.AddUsers)

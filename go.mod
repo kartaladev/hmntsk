@@ -6,6 +6,7 @@ require (
 	github.com/evanphx/json-patch/v5 v5.9.11
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/stretchr/testify v1.12.1
+	go.uber.org/goleak v1.3.0
 	go.uber.org/mock v0.6.0
 )
 

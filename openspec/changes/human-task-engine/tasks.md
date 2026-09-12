@@ -89,12 +89,12 @@
 
 ## 11. Escalation
 
-- [ ] 11.1 Implement overdue discovery with lease claiming by conditional update; verify two concurrent sweeps escalate each task exactly once
-- [ ] 11.2 Implement lease expiry recovery; verify a task abandoned by a crashed sweeper is escalated after expiry
-- [ ] 11.3 Implement escalation policy application (pool widening) and the `OBSOLETE` supersession path; verify existing candidates remain eligible after widening
-- [ ] 11.4 Exclude terminal and `SUSPENDED` tasks, and honour the policy's `IN_PROGRESS` exemption; verify each exclusion with a table test
-- [ ] 11.5 Implement the host-driven sweep runner with no implicit startup; verify no goroutine, timer or polling begins when the host does not start it
-- [ ] 11.6 Verify escalation emits its event and the engine sends no notification of its own
+- [x] 11.1 Implement overdue discovery with lease claiming by conditional update; verify two concurrent sweeps escalate each task exactly once
+- [x] 11.2 Implement lease expiry recovery; verify a task abandoned by a crashed sweeper is escalated after expiry
+- [x] 11.3 Implement escalation policy application (pool widening) and the `OBSOLETE` supersession path; verify existing candidates remain eligible after widening
+- [x] 11.4 Exclude terminal and `SUSPENDED` tasks, and honour the policy's `IN_PROGRESS` exemption; verify each exclusion with a table test
+- [x] 11.5 Implement the host-driven sweep runner with no implicit startup; verify no goroutine, timer or polling begins when the host does not start it
+- [x] 11.6 Verify escalation emits its event and the engine sends no notification of its own
 
 ## 12. Transport conformance suite
 
