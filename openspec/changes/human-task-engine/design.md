@@ -171,7 +171,9 @@ Every mutation is a conditional update on a `version` column. Row locks are a Po
 
 ### D11. Never query inside a payload
 
-Anything filterable — type, status, priority, due date, correlation fields, assignee, candidates — is a real column. `jsonb` vs `JSON` vs `TEXT` then becomes a storage detail with no query surface instead of three incompatible query languages.
+Anything filterable — type, status, priority, due date, correlation fields, assignee, candidates — is a real column. The payload column's type then becomes a storage detail with no query surface instead of three incompatible query languages.
+
+**Amended during implementation: payloads are stored as `text` / `LONGTEXT` on every dialect, never `jsonb` or MySQL `JSON`.** Both native JSON types normalise what they are given — they reorder object keys, drop insignificant whitespace and rewrite number literals — which contradicts the verbatim-payload requirement of `task-types`. Their only advantage is querying inside the payload, which this decision already forbids, so there is nothing set against the change. SQLite was text either way.
 
 Candidates live in a **child table**, not an array or JSON column: none of PostgreSQL arrays, MySQL JSON or SQLite can be indexed portably for "the tasks Alice may claim".
 
@@ -223,7 +225,9 @@ That fixes the boundary for the other two terminal faults: `FAILED` is actor-ori
 
 `SaveProgress` accepts an RFC 6902 JSON Patch. It handles nested structures and arrays that a shallow key merge cannot, and it *is* the field-level audit record — no before/after blobs needed.
 
-Transition history records one row per lifecycle transition, not per save. Patch operations are recorded separately, so autosave traffic does not drown the transition log.
+Transition history records one row per lifecycle transition, not per save, so autosave traffic does not drown the transition log.
+
+**Amended during implementation: per-patch audit records are not persisted.** An earlier draft of this decision said patch operations were recorded separately, but no table was ever specified for them and none was built. Field-level audit is therefore absent: the engine stores the current progress payload and the coarse transition history, not the sequence of patches that produced it. The source material treats field-level audit as conditional ("if field-level audit is required"), so this is a deferral rather than a dropped requirement — see Open Questions.
 
 ### D18. Live candidate evaluation, not a creation-time snapshot
 
@@ -235,8 +239,22 @@ Eligibility resolves group membership at the moment of the operation. Someone wh
 
 - Task identifiers are UUIDv7 by default — time-ordered, so they index well and page stably — generated behind a port so a host can substitute ULIDs or its own scheme. Stored as an opaque string column for dialect portability.
 - The REST contract is defined by `transport/core`'s route table, with the OpenAPI document generated from it rather than hand-maintained alongside it.
-- Go baseline: a version providing generics and `context.WithoutCancel`, tracking the two most recent Go releases.
-- `go.work` coordinates the modules in development; each module is released and tagged independently.
+- Go baseline: a version providing generics and `context.WithoutCancel`, tracking the two most recent Go releases. The modules declare Go 1.26, while `golangci-lint` and `govulncheck` are pinned to a 1.26 toolchain in the Makefile because neither can yet parse the 1.27 standard library — the pin belongs to the tooling, not to the modules, and lifts when those tools catch up.
+- `go.work` coordinates the modules in development; each module is released and tagged independently. Satellite modules deliberately carry no `require` on the core module until release; `go.work` resolves them during development and real versions are written in at tag time, in the order `docs/releasing.md` enforces.
+
+### D20. Escalation backs off by holding its lease
+
+Widening a candidate pool does not move the task's deadline, so a widened task is overdue again the instant it is escalated. Nothing in the source material addresses this, and the naive reading — release the lease on success — escalates the same task on every sweep forever.
+
+Escalation therefore **keeps** its lease rather than releasing it. The lease expiring is the back-off, which makes one escalation per lease period the natural rate and reuses the mechanism already required by D10 instead of adding a second one. A policy's `MaxEscalations` caps the total independently. A task exempted by `ExemptInProgress` also keeps its lease, so an exempt task is not re-examined on every sweep.
+
+*Alternative considered:* advancing the due date on escalation. Rejected because the due date is the host's statement about when the work was needed, and silently rewriting it destroys the record of how late the task actually is.
+
+### D21. Error taxonomy collapses pairs the HTTP contract cannot distinguish
+
+`ErrIllegalTransition` matches `ErrConflict`, and `ErrUnregisteredType` matches `ErrValidation` — one way only, so the specific error stays distinguishable when a caller wants it.
+
+*Why:* each pair is one condition observed at two resolutions, and `task-http-api` maps each pair to a single status code. A host that only wants to know "was this a conflict?" should not have to enumerate every conflict-shaped error, while a host that wants the precise cause still can.
 
 ## Risks / Trade-offs
 
@@ -258,4 +276,5 @@ Not applicable — greenfield, no existing deployment, no data to migrate. Adopt
 - **MariaDB as a fourth dialect.** MySQL-shaped but with `RETURNING` and different collation defaults, so it is a distinct dialect wearing a disguise. Deferrable: adding a dialect does not change the seam, the specs or the task breakdown.
 - **Webhook delivery mechanics.** Storage and verbatim echo of callback targets are specified; retry policy, backoff and dead-lettering are not, and no delivery module ships in this change. Deferrable: it is a consumer of the event stream, not a change to it.
 - **Per-task event ordering guarantees.** At-least-once is committed; whether consumers additionally get per-task ordering depends on the transport a host relays to. Deferrable: it constrains the relay, which the host owns.
+- **Field-level audit of progress saves.** D17 defers the per-patch record; whether it returns depends on whether an adopter needs to answer "who changed this field, and when" rather than "who worked this task". Deferrable: it is an additive table and an additive write, changing no existing behaviour.
 - **Built-in metrics and tracing.** Whether the engine emits its own instrumentation or leaves it entirely to event consumers and the host's middleware.

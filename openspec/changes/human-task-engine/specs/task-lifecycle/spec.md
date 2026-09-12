@@ -136,14 +136,21 @@ The assignee SHALL be able to delegate a `RESERVED` or `IN_PROGRESS` task to ano
 - **WHEN** the assignee delegates to an actor who is not eligible for the task
 - **THEN** the operation fails, the assignee is unchanged, and no event is produced
 
-### Requirement: Cancellation from any non-terminal state
+### Requirement: Cancellation from any state a stored task can occupy
 
-The task's owner SHALL be able to cancel a task in any non-terminal state, moving it to `EXITED`.
+The task's owner SHALL be able to cancel a task in `READY`, `RESERVED`, `IN_PROGRESS` or `SUSPENDED`, moving it to `EXITED`.
+
+`CREATED` is deliberately absent: it exists only within the creation operation, which resolves it to `READY`, `RESERVED` or `ERROR` before returning, so no stored task is ever observed in it and nothing can be cancelled from it. This matches the transition table above, which permits only the transitions it lists.
 
 #### Scenario: Cancelling in-flight work
 
 - **WHEN** a task in `IN_PROGRESS` is cancelled
 - **THEN** its status becomes `EXITED`, the cancellation is recorded in history, and a cancellation event is produced
+
+#### Scenario: Cancelling suspended work
+
+- **WHEN** a task in `SUSPENDED` is cancelled
+- **THEN** its status becomes `EXITED` and it is not resumable
 
 ### Requirement: Concurrent modification is detected, never silently lost
 

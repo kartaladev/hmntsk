@@ -375,6 +375,8 @@ func TestSweepExclusions(t *testing.T) {
 				assert.Equal(t, 1, result.Claimed, "it is overdue and claimable")
 				assert.Equal(t, 1, result.Exempted, "but the policy says leave it alone")
 				assert.Equal(t, hmntsk.StatusInProgress, stored.Status)
+				assert.NotNil(t, stored.LockedUntil,
+					"the lease is retained, so the next sweep does not reconsider it")
 				untouched(t, result, stored)
 			},
 		},
