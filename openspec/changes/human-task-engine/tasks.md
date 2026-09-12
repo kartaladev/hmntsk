@@ -15,11 +15,11 @@
 
 ## 3. State machine
 
-- [ ] 3.1 Implement the transition table from spec `task-lifecycle` as data, plus a `CanTransition` lookup; verify a table test asserts every legal and illegal pair
-- [ ] 3.2 Implement pure transition functions (`Claim`, `Release`, `Start`, `Complete`, `Fail`, `Delegate`, `Suspend`, `Resume`, `Escalate`, `Cancel`, `Obsolete`) returning `(next Task, events []Event, err error)`; verify the receiver is never mutated on success or failure
-- [ ] 3.3 Implement suspend/resume restoring `SuspendedFrom`; verify resume from each suspendable state returns to that exact state
-- [ ] 3.4 Implement the transition history record type; verify every successful transition produces exactly one record with actor, times and comment
-- [ ] 3.5 Verify with a table test that completion with a negative output yields `COMPLETED`, and that `FAILED` and `ERROR` are produced only by their respective paths (design D16)
+- [x] 3.1 Implement the transition table from spec `task-lifecycle` as data, plus a `CanTransition` lookup; verify a table test asserts every legal and illegal pair
+- [x] 3.2 Implement pure transition functions (`Claim`, `Release`, `Start`, `Complete`, `Fail`, `Delegate`, `Suspend`, `Resume`, `Escalate`, `Cancel`, `Obsolete`) returning `(next Task, events []Event, err error)`; verify the receiver is never mutated on success or failure
+- [x] 3.3 Implement suspend/resume restoring `SuspendedFrom`; verify resume from each suspendable state returns to that exact state
+- [x] 3.4 Implement the transition history record type; verify every successful transition produces exactly one record with actor, times and comment
+- [x] 3.5 Verify with a table test that completion with a negative output yields `COMPLETED`, and that `FAILED` and `ERROR` are produced only by their respective paths (design D16)
 
 ## 4. Task type registry
 
