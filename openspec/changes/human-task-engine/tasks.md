@@ -7,11 +7,11 @@
 
 ## 2. Core domain types
 
-- [ ] 2.1 Define `TaskID`, `Status` (the ten states of spec `task-lifecycle`), `Priority`, and the terminal-state predicate; verify a table test covers every state's terminality
-- [ ] 2.2 Define `CorrelationData` and `CallbackTarget` with JSON tags; verify a round-trip test preserves reference parameters verbatim
-- [ ] 2.3 Define the `Task` aggregate including `Type`, `Version`, `SuspendedFrom`, lease fields, timestamps, and `json.RawMessage` payloads; verify JSON round-trip preserves large integers and unknown fields per spec `task-types`
-- [ ] 2.4 Define the typed error set (conflict, illegal transition, not found, validation, authorisation, unregistered type) with `errors.Is` support; verify each is distinguishable by a table test
-- [ ] 2.5 Define the ID generator port with a UUIDv7 default implementation; verify generated IDs sort in creation order
+- [x] 2.1 Define `TaskID`, `Status` (the ten states of spec `task-lifecycle`), `Priority`, and the terminal-state predicate; verify a table test covers every state's terminality
+- [x] 2.2 Define `CorrelationData` and `CallbackTarget` with JSON tags; verify a round-trip test preserves reference parameters verbatim
+- [x] 2.3 Define the `Task` aggregate including `Type`, `Version`, `SuspendedFrom`, lease fields, timestamps, and `json.RawMessage` payloads; verify JSON round-trip preserves large integers and unknown fields per spec `task-types`
+- [x] 2.4 Define the typed error set (conflict, illegal transition, not found, validation, authorisation, unregistered type) with `errors.Is` support; verify each is distinguishable by a table test
+- [x] 2.5 Define the ID generator port with a UUIDv7 default implementation; verify generated IDs sort in creation order
 
 ## 3. State machine
 

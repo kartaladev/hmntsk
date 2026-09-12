@@ -42,6 +42,12 @@ linters:
         - name: receiver-naming
         - name: context-as-argument
         - name: unexported-return
+    testifylint:
+      disable:
+        # The project's table-test style uses `assert` for independent checks so
+        # that every failing row reports, and `require` only for preconditions
+        # that must halt the case. require-error contradicts that deliberately.
+        - require-error
     staticcheck:
       checks:
         - all
