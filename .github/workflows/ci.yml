@@ -11,10 +11,9 @@ permissions:
 
 env:
   GO_VERSION: "1.26"
-  # golangci-lint type-checks the standard library from source, so it cannot
-  # read a toolchain newer than the one it was built with. Pin lint to the
-  # module baseline.
-  LINT_TOOLCHAIN: go1.26.8
+  # Every job runs the Go version below. actions/setup-go sets GOTOOLCHAIN=local
+  # once it is installed, so nothing here downloads a second toolchain; the
+  # Makefile's own pin defers to that.
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

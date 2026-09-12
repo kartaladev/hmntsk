@@ -1,6 +1,6 @@
 module github.com/kartaladev/hmntsk/transporttest
 
-go 1.26
+go 1.26.0
 
 // The dependencies on github.com/kartaladev/hmntsk and
 // github.com/kartaladev/hmntsk/transport/core are supplied by the repository's

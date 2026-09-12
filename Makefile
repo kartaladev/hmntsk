@@ -12,12 +12,16 @@ RELEASE_ORDER := . store/sqlcore storetest transport/core transporttest \
 GO ?= go
 GOLANGCI_LINT ?= golangci-lint
 
-# golangci-lint and govulncheck both type-check the standard library from
-# source, so neither can read a toolchain newer than the one it was itself built
-# with. Pin them to the module baseline (go.mod's `go` directive) so they stay
-# usable when the developer's default toolchain runs ahead of them.
-TOOL_TOOLCHAIN ?= go1.26.8
-TOOL_ENV := GOTOOLCHAIN=$(TOOL_TOOLCHAIN)
+# The project builds, tests and lints on Go 1.26 — the version every go.mod
+# declares. Pinning GOTOOLCHAIN for every target, not just the linters, keeps a
+# developer whose default toolchain has moved ahead on exactly what CI runs.
+# Without it `make build` and `make test` silently use a newer toolchain than
+# `make lint`, and the difference is only ever found in a pull request.
+#
+# `?=` leaves CI alone: actions/setup-go installs the pinned version and sets
+# GOTOOLCHAIN=local itself, and an environment value wins here.
+GOTOOLCHAIN ?= go1.26.8
+export GOTOOLCHAIN
 
 .PHONY: all build lint fmt test test-integration test-race tidy vuln generate \
         store-matrix transport-matrix release-order clean
@@ -35,13 +39,13 @@ build:
 lint:
 	@set -e; for m in $(MODULES); do \
 		echo "==> lint $$m"; \
-		(cd $$m && $(TOOL_ENV) $(GOLANGCI_LINT) run ./...); \
+		(cd $$m && $(GOLANGCI_LINT) run ./...); \
 	done
 
 ## fmt: apply the configured formatters in place.
 fmt:
 	@set -e; for m in $(MODULES); do \
-		(cd $$m && $(TOOL_ENV) $(GOLANGCI_LINT) fmt ./...); \
+		(cd $$m && $(GOLANGCI_LINT) fmt ./...); \
 	done
 
 ## test: run unit tests (no external dependencies) in every module.
@@ -79,7 +83,7 @@ tidy:
 vuln:
 	@set -e; for m in $(MODULES); do \
 		echo "==> govulncheck $$m"; \
-		(cd $$m && $(TOOL_ENV) govulncheck ./...); \
+		(cd $$m && govulncheck ./...); \
 	done
 
 ## generate: regenerate mocks and other generated code.

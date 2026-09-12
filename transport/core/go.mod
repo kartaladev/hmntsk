@@ -1,6 +1,6 @@
 module github.com/kartaladev/hmntsk/transport/core
 
-go 1.26
+go 1.26.0
 
 // The dependency on github.com/kartaladev/hmntsk is supplied by the
 // repository's go.work during development and is written in here, with a real

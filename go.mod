@@ -1,6 +1,6 @@
 module github.com/kartaladev/hmntsk
 
-go 1.26
+go 1.26.0
 
 require (
 	github.com/evanphx/json-patch/v5 v5.9.11
