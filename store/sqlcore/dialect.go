@@ -50,6 +50,13 @@ type Dialect interface {
 	// microsecond precision.
 	TimestampColumnType() string
 	// JSONColumnType is the column type for an opaque JSON payload.
+	//
+	// It is a text type on every dialect, never a native JSON type. PostgreSQL
+	// jsonb and MySQL JSON both normalise what they are given — they reorder
+	// object keys, drop insignificant whitespace and rewrite number literals —
+	// and the engine promises to give a payload back exactly as it was handed
+	// over, fields the schema does not describe included. Nothing queries
+	// inside a payload, so the native types buy nothing to set against that.
 	JSONColumnType() string
 	// BooleanTrue renders the literal the dialect stores for true, used only
 	// where a boolean must appear inline in generated DDL.
@@ -108,7 +115,7 @@ func (postgres) IdentifierCollation() string { return "C" }
 
 func (postgres) TimestampColumnType() string { return "timestamptz(6)" }
 
-func (postgres) JSONColumnType() string { return "jsonb" }
+func (postgres) JSONColumnType() string { return "text" }
 
 func (postgres) BooleanTrue() string { return "TRUE" }
 
@@ -142,7 +149,7 @@ func (mysql) IdentifierCollation() string { return "utf8mb4_0900_as_cs" }
 // through the session time zone and runs out of range in 2038.
 func (mysql) TimestampColumnType() string { return "DATETIME(6)" }
 
-func (mysql) JSONColumnType() string { return "JSON" }
+func (mysql) JSONColumnType() string { return "LONGTEXT" }
 
 func (mysql) BooleanTrue() string { return "1" }
 

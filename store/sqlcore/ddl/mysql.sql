@@ -11,6 +11,10 @@
 -- Identifier columns are VARCHAR rather than TEXT because MySQL cannot index a
 -- TEXT column without a prefix length.
 --
+-- Payload columns are LONGTEXT, not JSON. MySQL's JSON type sorts object keys
+-- and rewrites number literals, and the engine promises to return a payload
+-- exactly as it was supplied. Nothing queries inside a payload.
+--
 -- {{PREFIX}} is replaced with the host's configured table prefix.
 
 CREATE TABLE IF NOT EXISTS `{{PREFIX}}tasks` (
@@ -24,13 +28,13 @@ CREATE TABLE IF NOT EXISTS `{{PREFIX}}tasks` (
     `owner_type`         VARCHAR(128) COLLATE utf8mb4_0900_as_cs NULL,
     `owner_ref`          VARCHAR(255) COLLATE utf8mb4_0900_as_cs NULL,
     `activity_key`       VARCHAR(255) COLLATE utf8mb4_0900_as_cs NULL,
-    `correlation_extra`  JSON NULL,
+    `correlation_extra`  LONGTEXT NULL,
     `callback_address`   TEXT NULL,
-    `callback_params`    JSON NULL,
-    `escalation`         JSON NULL,
-    `input`              JSON NULL,
-    `progress`           JSON NULL,
-    `output`             JSON NULL,
+    `callback_params`    LONGTEXT NULL,
+    `escalation`         LONGTEXT NULL,
+    `input`              LONGTEXT NULL,
+    `progress`           LONGTEXT NULL,
+    `output`             LONGTEXT NULL,
     `reason`             TEXT NULL,
     `created_by`         VARCHAR(255) COLLATE utf8mb4_0900_as_cs NULL,
     `escalation_count`   INT NOT NULL DEFAULT 0,
@@ -82,7 +86,7 @@ CREATE TABLE IF NOT EXISTS `{{PREFIX}}task_outbox` (
     `event_type`    VARCHAR(64)  COLLATE utf8mb4_0900_as_cs NOT NULL,
     `occurred_at`   DATETIME(6) NOT NULL,
     `published_at`  DATETIME(6) NULL,
-    `payload`       JSON NOT NULL,
+    `payload`       LONGTEXT NOT NULL,
     PRIMARY KEY (`id`),
     KEY `{{PREFIX}}task_outbox_unpublished_idx` (`published_at`, `occurred_at`, `id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -91,12 +95,12 @@ CREATE TABLE IF NOT EXISTS `{{PREFIX}}task_types` (
     `name`                VARCHAR(128) COLLATE utf8mb4_0900_as_cs NOT NULL,
     `title`               TEXT NULL,
     `description`         TEXT NULL,
-    `input_schema`        JSON NULL,
-    `output_schema`       JSON NULL,
+    `input_schema`        LONGTEXT NULL,
+    `output_schema`       LONGTEXT NULL,
     `default_priority`    INT NOT NULL DEFAULT 5,
     `default_deadline_ms` BIGINT NOT NULL DEFAULT 0,
-    `default_escalation`  JSON NULL,
-    `default_assignment`  JSON NULL,
+    `default_escalation`  LONGTEXT NULL,
+    `default_assignment`  LONGTEXT NULL,
     `updated_at`          DATETIME(6) NOT NULL,
     PRIMARY KEY (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

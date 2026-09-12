@@ -51,12 +51,17 @@ func repositoryRoundTrip(t *testing.T, factory Factory) {
 			},
 		},
 		{
-			name: "an opaque payload is not reinterpreted",
-			task: NewTask(seq.next()),
+			name: "an opaque payload comes back byte for byte",
+			task: NewTask(seq.next(), func(task *hmntsk.Task) {
+				task.Input = []byte(`{"zulu":1,"amount":9007199254740993,"rate":1.500,"unknown":{"a":[1,null,true]}}`)
+			}),
 			assert: func(t *testing.T, stored hmntsk.Task) {
-				assert.JSONEq(t, `{"zulu":1,"amount":9007199254740993}`, string(stored.Input))
-				assert.Contains(t, string(stored.Input), "9007199254740993",
-					"an integer beyond exact float range must survive the database")
+				//nolint:testifylint // byte-exact comparison is the property under test.
+				assert.Equal(t,
+					`{"zulu":1,"amount":9007199254740993,"rate":1.500,"unknown":{"a":[1,null,true]}}`,
+					string(stored.Input),
+					"key order, number literals and undescribed fields must all survive the "+
+						"database; a native JSON column type would quietly rewrite all three")
 			},
 		},
 		{
@@ -64,7 +69,8 @@ func repositoryRoundTrip(t *testing.T, factory Factory) {
 			task: NewTask(seq.next()),
 			assert: func(t *testing.T, stored hmntsk.Task) {
 				require.NotNil(t, stored.Callback)
-				assert.JSONEq(t, `{"corr":"abc","seq":9007199254740993}`,
+				//nolint:testifylint // reference parameters are echoed verbatim or not at all.
+				assert.Equal(t, `{"corr":"abc","seq":9007199254740993}`,
 					string(stored.Callback.ReferenceParameters))
 			},
 		},

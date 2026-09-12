@@ -7,6 +7,11 @@
 -- repeat rows. C collation is byte order, which is the order the identifiers
 -- were minted in.
 --
+-- Payload columns are text, not jsonb. jsonb normalises what it is given — it
+-- reorders object keys, drops whitespace and rewrites number literals — and the
+-- engine promises to return a payload exactly as it was supplied. Nothing
+-- queries inside a payload, so there is nothing to set against that.
+--
 -- {{PREFIX}} is replaced with the host's configured table prefix.
 
 CREATE TABLE IF NOT EXISTS "{{PREFIX}}tasks" (
@@ -20,13 +25,13 @@ CREATE TABLE IF NOT EXISTS "{{PREFIX}}tasks" (
     "owner_type"         text COLLATE "C",
     "owner_ref"          text COLLATE "C",
     "activity_key"       text COLLATE "C",
-    "correlation_extra"  jsonb,
+    "correlation_extra"  text,
     "callback_address"   text,
-    "callback_params"    jsonb,
-    "escalation"         jsonb,
-    "input"              jsonb,
-    "progress"           jsonb,
-    "output"             jsonb,
+    "callback_params"    text,
+    "escalation"         text,
+    "input"              text,
+    "progress"           text,
+    "output"             text,
     "reason"             text,
     "created_by"         text COLLATE "C",
     "escalation_count"   integer NOT NULL DEFAULT 0,
@@ -72,7 +77,7 @@ CREATE TABLE IF NOT EXISTS "{{PREFIX}}task_outbox" (
     "event_type"    text COLLATE "C" NOT NULL,
     "occurred_at"   timestamptz(6) NOT NULL,
     "published_at"  timestamptz(6),
-    "payload"       jsonb NOT NULL,
+    "payload"       text NOT NULL,
     CONSTRAINT "{{PREFIX}}task_outbox_pkey" PRIMARY KEY ("id")
 );
 
@@ -80,12 +85,12 @@ CREATE TABLE IF NOT EXISTS "{{PREFIX}}task_types" (
     "name"                text COLLATE "C" NOT NULL,
     "title"               text,
     "description"         text,
-    "input_schema"        jsonb,
-    "output_schema"       jsonb,
+    "input_schema"        text,
+    "output_schema"       text,
     "default_priority"    integer NOT NULL DEFAULT 5,
     "default_deadline_ms" bigint NOT NULL DEFAULT 0,
-    "default_escalation"  jsonb,
-    "default_assignment"  jsonb,
+    "default_escalation"  text,
+    "default_assignment"  text,
     "updated_at"          timestamptz(6) NOT NULL,
     CONSTRAINT "{{PREFIX}}task_types_pkey" PRIMARY KEY ("name")
 );
