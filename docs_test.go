@@ -69,7 +69,16 @@ func documentedReleaseOrder(t *testing.T) []string {
 func toolingReleaseOrder(t *testing.T) []string {
 	t.Helper()
 
-	out, err := exec.CommandContext(t.Context(), "make", "release-order").Output()
+	// --no-print-directory, and a cleared MAKELEVEL/MAKEFLAGS, because this runs
+	// as a sub-make whenever the suite itself was started by make. GNU make
+	// announces "Entering directory ..." on stdout for a sub-make, and those
+	// banners would be parsed here as module names. It passes at make level 0
+	// and fails under `make test`, which is the kind of difference that is only
+	// ever found in CI.
+	cmd := exec.CommandContext(t.Context(), "make", "--no-print-directory", "release-order")
+	cmd.Env = append(os.Environ(), "MAKELEVEL=", "MAKEFLAGS=")
+
+	out, err := cmd.Output()
 	require.NoError(t, err, "make release-order must work; it is how a release is driven")
 
 	var order []string
