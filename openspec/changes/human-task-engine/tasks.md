@@ -59,12 +59,12 @@
 
 ## 8. Storage conformance suite
 
-- [ ] 8.1 Build `storetest` exporting `RunSuite(t, factory)` covering every requirement of spec `task-persistence`; verify it passes against the in-memory store
-- [ ] 8.2 Add transaction cases: engine-led commit, host-led non-commit, nested `Do` joining without savepoints, inner failure aborting the whole scope; verify each fails when the behaviour is inverted
-- [ ] 8.3 Add rollback cases: rollback on error, rollback on panic with the panic re-raised, no events delivered on rollback, no after-commit hooks on rollback
-- [ ] 8.4 Add concurrency cases: concurrent claim yielding exactly one winner, stale-version write rejected with the current version reported
-- [ ] 8.5 Add portability cases: case-sensitive identifier comparison, microsecond timestamp round trip, repository and transactor sharing one connection
-- [ ] 8.6 Add a cancellation case asserting a context cancelled mid-`Do` rolls back
+- [x] 8.1 Build `storetest` exporting `RunSuite(t, factory)` covering every requirement of spec `task-persistence`; verify it passes against the in-memory store
+- [x] 8.2 Add transaction cases: engine-led commit, host-led non-commit, nested `Do` joining without savepoints, inner failure aborting the whole scope; verify each fails when the behaviour is inverted
+- [x] 8.3 Add rollback cases: rollback on error, rollback on panic with the panic re-raised, no events delivered on rollback, no after-commit hooks on rollback
+- [x] 8.4 Add concurrency cases: concurrent claim yielding exactly one winner, stale-version write rejected with the current version reported
+- [x] 8.5 Add portability cases: case-sensitive identifier comparison, microsecond timestamp round trip, repository and transactor sharing one connection
+- [x] 8.6 Add a cancellation case asserting a context cancelled mid-`Do` rolls back
 
 ## 9. sqlcore and dialects
 

@@ -32,7 +32,13 @@ import (
 // conformance suite's concurrency cases deterministic without making them
 // weaker — a losing writer still loses on the version check.
 type Store struct {
-	mu      sync.Mutex
+	// txMu serialises transactions against one another.
+	txMu sync.Mutex
+	// dataMu guards the committed state. It is separate from txMu so that a
+	// read outside a transaction does not block behind an open one — a real
+	// database would serve that read from another connection, and the
+	// conformance suite relies on being able to make it.
+	dataMu  sync.RWMutex
 	tasks   map[hmntsk.TaskID]hmntsk.Task
 	history map[hmntsk.TaskID][]hmntsk.TransitionRecord
 	outbox  []hmntsk.Event
@@ -67,12 +73,12 @@ type tx struct {
 // ContextWithTx returns a context carrying tx, so that a host can open a
 // transaction itself and have the engine join it.
 func (s *Store) ContextWithTx(ctx context.Context) (scoped context.Context, done func(commit bool)) {
-	s.mu.Lock()
+	s.txMu.Lock()
 
 	transaction := s.newTx()
 
 	done = func(commit bool) {
-		defer s.mu.Unlock()
+		defer s.txMu.Unlock()
 
 		if commit {
 			transaction.commit()
@@ -82,7 +88,7 @@ func (s *Store) ContextWithTx(ctx context.Context) (scoped context.Context, done
 	return context.WithValue(ctx, contextKey{}, transaction), done
 }
 
-// newTx stages a transaction. The caller must already hold s.mu.
+// newTx stages a transaction. The caller must already hold s.txMu.
 func (s *Store) newTx() *tx {
 	return &tx{
 		store:   s,
@@ -91,8 +97,11 @@ func (s *Store) newTx() *tx {
 	}
 }
 
-// commit merges the staged writes into the store. The caller must hold s.mu.
+// commit merges the staged writes into the store. The caller must hold s.txMu.
 func (t *tx) commit() {
+	t.store.dataMu.Lock()
+	defer t.store.dataMu.Unlock()
+
 	maps.Copy(t.store.tasks, t.tasks)
 
 	for id, records := range t.history {
@@ -123,8 +132,8 @@ func (s *Store) Do(ctx context.Context, fn func(ctx context.Context) error) erro
 		return fn(ctx)
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.txMu.Lock()
+	defer s.txMu.Unlock()
 
 	transaction := s.newTx()
 	scoped := context.WithValue(ctx, contextKey{}, transaction)
@@ -165,8 +174,8 @@ func (s *Store) Append(ctx context.Context, events []hmntsk.Event) error {
 // Events returns every event committed so far. It is the durable record a relay
 // would read.
 func (s *Store) Events() []hmntsk.Event {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.dataMu.RLock()
+	defer s.dataMu.RUnlock()
 
 	return slices.Clone(s.outbox)
 }
@@ -194,8 +203,8 @@ func (s *Store) Get(ctx context.Context, id hmntsk.TaskID) (hmntsk.Task, error) 
 		return transaction.get(id)
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.dataMu.RLock()
+	defer s.dataMu.RUnlock()
 
 	task, ok := s.tasks[id]
 	if !ok {
@@ -210,6 +219,9 @@ func (t *tx) get(id hmntsk.TaskID) (hmntsk.Task, error) {
 	if task, ok := t.tasks[id]; ok {
 		return task.Clone(), nil
 	}
+
+	t.store.dataMu.RLock()
+	defer t.store.dataMu.RUnlock()
 
 	if task, ok := t.store.tasks[id]; ok {
 		return task.Clone(), nil
@@ -265,16 +277,15 @@ func (s *Store) AppendHistory(ctx context.Context, records ...hmntsk.TransitionR
 // History implements [hmntsk.Repository].
 func (s *Store) History(ctx context.Context, id hmntsk.TaskID) ([]hmntsk.TransitionRecord, error) {
 	if transaction := txFrom(ctx); transaction != nil {
-		committed := transaction.store.history[id]
-		out := make([]hmntsk.TransitionRecord, 0, len(committed)+len(transaction.history[id]))
-		out = append(out, committed...)
-		out = append(out, transaction.history[id]...)
+		transaction.store.dataMu.RLock()
+		committed := slices.Clone(transaction.store.history[id])
+		transaction.store.dataMu.RUnlock()
 
-		return out, nil
+		return append(committed, transaction.history[id]...), nil
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.dataMu.RLock()
+	defer s.dataMu.RUnlock()
 
 	return slices.Clone(s.history[id]), nil
 }
@@ -282,15 +293,18 @@ func (s *Store) History(ctx context.Context, id hmntsk.TaskID) ([]hmntsk.Transit
 // snapshot returns every stored task, reading through an active transaction.
 func (s *Store) snapshot(ctx context.Context) []hmntsk.Task {
 	if transaction := txFrom(ctx); transaction != nil {
+		transaction.store.dataMu.RLock()
 		merged := make(map[hmntsk.TaskID]hmntsk.Task, len(transaction.store.tasks)+len(transaction.tasks))
 		maps.Copy(merged, transaction.store.tasks)
+		transaction.store.dataMu.RUnlock()
+
 		maps.Copy(merged, transaction.tasks)
 
 		return slices.Collect(maps.Values(merged))
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.dataMu.RLock()
+	defer s.dataMu.RUnlock()
 
 	return slices.Collect(maps.Values(s.tasks))
 }
@@ -469,8 +483,8 @@ func errOutsideTransaction(operation string) error {
 
 // Len returns how many tasks are stored. It is for tests.
 func (s *Store) Len() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.dataMu.RLock()
+	defer s.dataMu.RUnlock()
 
 	return len(s.tasks)
 }
