@@ -31,12 +31,12 @@
 
 ## 5. Assignment
 
-- [ ] 5.1 Define the `GroupResolver` and `AssignmentStrategy` ports plus a static in-memory implementation for tests; verify the static implementation satisfies both
-- [ ] 5.2 Generate mocks for the ports with `mockgen` following the repository's mock conventions; verify generated mocks compile and are excluded from the production build
-- [ ] 5.3 Implement eligibility evaluation with live group resolution and exclusion precedence (design D18); verify a table test covers candidate user, group member, excluded, and both-listed cases
-- [ ] 5.4 Implement single-candidate auto-reservation and the empty-pool `ERROR` outcome; verify both paths per spec `task-assignment`
-- [ ] 5.5 Implement per-operation authorisation (eligibility for claim and delegate, assignee identity for the rest); verify each operation refuses the wrong actor
-- [ ] 5.6 Distinguish resolver failure from eligibility denial in returned errors; verify a failing resolver produces a fault, not a denial
+- [x] 5.1 Define the `GroupResolver` and `AssignmentStrategy` ports plus a static in-memory implementation for tests; verify the static implementation satisfies both
+- [x] 5.2 Generate mocks for the ports with `mockgen` following the repository's mock conventions; verify generated mocks compile and are excluded from the production build
+- [x] 5.3 Implement eligibility evaluation with live group resolution and exclusion precedence (design D18); verify a table test covers candidate user, group member, excluded, and both-listed cases
+- [x] 5.4 Implement single-candidate auto-reservation and the empty-pool `ERROR` outcome; verify both paths per spec `task-assignment`
+- [x] 5.5 Implement per-operation authorisation (eligibility for claim and delegate, assignee identity for the rest); verify each operation refuses the wrong actor
+- [x] 5.6 Distinguish resolver failure from eligibility denial in returned errors; verify a failing resolver produces a fault, not a denial
 
 ## 6. Ports, service operations and events
 

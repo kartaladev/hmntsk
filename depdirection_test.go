@@ -30,6 +30,8 @@ var forbiddenPrefixes = []string{
 	"github.com/valyala/fasthttp",
 	"github.com/labstack/echo",
 	"github.com/go-chi/chi",
+	// Test doubles must never reach a consumer's binary.
+	"go.uber.org/mock",
 	"github.com/gorilla/mux",
 }
 
