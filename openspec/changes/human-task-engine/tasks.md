@@ -110,8 +110,8 @@
 - [x] 13.3 Implement the task type schema endpoint; verify a client can retrieve schemas for an unfamiliar type
 - [x] 13.4 Generate the OpenAPI document from the route table; verify the generated document is regenerated and diff-clean in CI
 - [x] 13.5 Implement `transport/http` over `net/http`; verify it passes `transporttest`
-- [ ] 13.6 Implement `transport/gin`; verify it passes `transporttest`
-- [ ] 13.7 Implement `transport/fiber` for Fiber v3 without a fasthttp-to-net/http conversion layer; verify it passes `transporttest`
+- [x] 13.6 Implement `transport/gin`; verify it passes `transporttest`
+- [x] 13.7 Implement `transport/fiber` for Fiber v3 without a fasthttp-to-net/http conversion layer; verify it passes `transporttest`
 - [x] 13.8 Take the acting actor from host-established request state; verify the engine performs no authentication of its own
 
 ## 14. Documentation, CI and release
