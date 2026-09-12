@@ -53,9 +53,9 @@
 
 ## 7. Typed facade
 
-- [ ] 7.1 Implement `Kind[In, Out]` with `Create`, `Complete`, `Get` and `OnCompleted`; verify typed and untyped creation produce identical stored payload bytes
-- [ ] 7.2 Implement `Define[In, Out]` as registration plus handle, deriving schemas where possible; verify a conflicting `Define` fails at registration
-- [ ] 7.3 Verify heterogeneous queries remain available through the untyped path while typed handles are in use
+- [x] 7.1 Implement `Kind[In, Out]` with `Create`, `Complete`, `Get` and `OnCompleted`; verify typed and untyped creation produce identical stored payload bytes
+- [x] 7.2 Implement `Define[In, Out]` as registration plus handle, deriving schemas where possible; verify a conflicting `Define` fails at registration
+- [x] 7.3 Verify heterogeneous queries remain available through the untyped path while typed handles are in use
 
 ## 8. Storage conformance suite
 
