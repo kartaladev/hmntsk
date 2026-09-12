@@ -370,3 +370,126 @@ func TestCheckAffected(t *testing.T) {
 		})
 	}
 }
+
+// TestPlaceholdersAppearInArgumentOrder is the guard against the one mistake
+// this package can make that no dialect reports.
+//
+// With ? placeholders, a fragment's position in the statement text is what
+// binds it to its argument. Assemble the fragments in one order, emit them in
+// another, and every dialect accepts the statement and answers the wrong
+// question — an inbox that returns nothing, with no error anywhere. The
+// numbered placeholders of one dialect make the same mistake visible, so the
+// invariant is asserted there and the argument count is asserted on the rest.
+func TestPlaceholdersAppearInArgumentOrder(t *testing.T) {
+	t.Parallel()
+
+	task := sampleTask()
+	lease := hmntsk.LeaseRequest{Now: reference, Owner: "sweeper-1", Duration: time.Minute}
+
+	build := func(b *sqlcore.Builder) map[string]sqlcore.Statement {
+		return map[string]sqlcore.Statement{
+			"InsertTask":        b.InsertTask(task),
+			"UpdateTask":        b.UpdateTask(task, 3),
+			"SelectTask":        b.SelectTask(task.ID),
+			"SelectTaskVersion": b.SelectTaskVersion(task.ID),
+			"DeleteTask":        b.DeleteTask(task.ID),
+			"InsertCandidates":  b.InsertCandidates(task.ID, task.Candidates),
+			"DeleteCandidates":  b.DeleteCandidates(task.ID),
+			"SelectCandidates":  b.SelectCandidates(task.ID, "task-2"),
+			"InsertHistory": b.InsertHistory(
+				hmntsk.TransitionRecord{TaskID: task.ID, Version: 1, At: reference},
+				hmntsk.TransitionRecord{TaskID: task.ID, Version: 2, At: reference},
+			),
+			"SelectHistory":       b.SelectHistory(task.ID),
+			"SelectOutbox":        b.SelectOutbox(10),
+			"MarkOutboxPublished": b.MarkOutboxPublished(reference, "e-1", "e-2"),
+			"SelectOverdue":       b.SelectOverdue(lease),
+			"ClaimLease":          b.ClaimLease(task.ID, lease),
+			"ReleaseLease":        b.ReleaseLease(task.ID, "sweeper-1"),
+			"UpsertType":          b.UpsertType(hmntsk.TypeSpec{Name: "approval"}, reference),
+			"SelectType":          b.SelectType("approval"),
+			"SelectTypes":         b.SelectTypes(),
+			"DeleteType":          b.DeleteType("approval"),
+			"SchemaQuery":         b.SchemaQuery(),
+			"QueryTasksFull": b.QueryTasks(hmntsk.ResolvedQuery{
+				Query: hmntsk.Query{
+					Assignee: "alice", Candidate: "alice", Cursor: "task-0", Limit: 10,
+					Statuses:  []hmntsk.Status{hmntsk.StatusReady, hmntsk.StatusReserved},
+					Types:     []string{"approval", "review"},
+					OwnerType: "process", OwnerRef: "p-1", ActivityKey: "approve",
+					DueBefore: &reference,
+				},
+				CandidateGroups: []string{"finance-approvers", "managers"},
+			}),
+			"QueryTasksCandidateOnly": b.QueryTasks(hmntsk.ResolvedQuery{
+				Query: hmntsk.Query{Candidate: "alice"},
+			}),
+		}
+	}
+
+	for name, statement := range build(sqlcore.New(sqlcore.PostgreSQL)) {
+		t.Run("postgres/"+name, func(t *testing.T) {
+			t.Parallel()
+
+			if statement.IsZero() {
+				return
+			}
+
+			positions := placeholderPositions(statement.SQL)
+
+			var want []int
+			for i := range statement.Args {
+				want = append(want, i+1)
+			}
+
+			assert.Equalf(t, want, positions,
+				"placeholders must appear left to right in argument order: %s", statement.SQL)
+		})
+	}
+
+	for _, dialect := range []sqlcore.Dialect{sqlcore.MySQL, sqlcore.SQLite} {
+		for name, statement := range build(sqlcore.New(dialect)) {
+			t.Run(dialect.Name()+"/"+name, func(t *testing.T) {
+				t.Parallel()
+
+				if statement.IsZero() {
+					return
+				}
+
+				assert.Equalf(t, len(statement.Args), strings.Count(statement.SQL, "?"),
+					"one marker per argument: %s", statement.SQL)
+			})
+		}
+	}
+}
+
+// placeholderPositions returns the numbers of the $n placeholders in a
+// statement, in the order they appear.
+func placeholderPositions(sql string) []int {
+	var positions []int
+
+	for i := 0; i < len(sql); i++ {
+		if sql[i] != '$' {
+			continue
+		}
+
+		j := i + 1
+		for j < len(sql) && sql[j] >= '0' && sql[j] <= '9' {
+			j++
+		}
+
+		if j == i+1 {
+			continue
+		}
+
+		value := 0
+		for _, digit := range sql[i+1 : j] {
+			value = value*10 + int(digit-'0')
+		}
+
+		positions = append(positions, value)
+		i = j - 1
+	}
+
+	return positions
+}

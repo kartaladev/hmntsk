@@ -50,11 +50,14 @@ test-race:
 		(cd $$m && $(GO) test -race ./...); \
 	done
 
-## test-integration: run tests that provision real databases via testcontainers.
+## test-integration: the same tests, with the time and freshness a container run
+## needs. There is deliberately no build tag: tests that provision a real
+## database are part of `go test ./...`, because a tag is how integration tests
+## end up broken for a fortnight without anyone noticing.
 test-integration:
 	@set -e; for m in $(MODULES); do \
-		echo "==> test -tags integration $$m"; \
-		(cd $$m && $(GO) test -tags integration -timeout 20m ./...); \
+		echo "==> integration $$m"; \
+		(cd $$m && $(GO) test -count=1 -timeout 30m ./...); \
 	done
 
 ## tidy: tidy every module and re-sync the workspace.

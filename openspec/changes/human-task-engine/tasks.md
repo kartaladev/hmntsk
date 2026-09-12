@@ -73,15 +73,15 @@
 - [x] 9.3 Implement conditional-update statements carrying the version predicate for every mutation; verify a rows-affected value of zero maps to the conflict error
 - [ ] 9.4 Implement the candidate child-table statements for inbox and eligibility queries; verify the generated query plans use the intended index on each dialect
 - [x] 9.5 Implement keyset pagination statements; verify ordering is deterministic across dialects
-- [ ] 9.6 Author per-dialect DDL for `tasks`, `task_candidates`, `task_history`, `task_outbox` and the type table, with collation pinned on identifier columns and `DATETIME(6)` on MySQL; verify the DDL applies cleanly on all three engines
-- [ ] 9.7 Implement the configurable table prefix across DDL and all statements; verify a prefixed schema passes the same suite
+- [x] 9.6 Author per-dialect DDL for `tasks`, `task_candidates`, `task_history`, `task_outbox` and the type table, with collation pinned on identifier columns and `DATETIME(6)` on MySQL; verify the DDL applies cleanly on all three engines
+- [x] 9.7 Implement the configurable table prefix across DDL and all statements; verify a prefixed schema passes the same suite
 - [x] 9.8 Implement `Migrations(dialect)` embedding the DDL, plus a test-only runner; verify the accessor returns the complete statement set
 - [x] 9.9 Implement `VerifySchema` including collation checks; verify it names a missing table and a wrong collation, and passes on a correct schema
 
 ## 10. Store adapters
 
-- [ ] 10.1 Implement `store/sql` over `database/sql` with `Store`, transaction join/flatten and context-carried handle helpers; verify it passes `storetest` on PostgreSQL, MySQL and SQLite
-- [ ] 10.2 Wire testcontainers-backed PostgreSQL and MySQL helpers following the repository's testcontainers conventions; verify the helpers are reused rather than duplicated per adapter
+- [x] 10.1 Implement `store/sql` over `database/sql` with `Store`, transaction join/flatten and context-carried handle helpers; verify it passes `storetest` on PostgreSQL, MySQL and SQLite
+- [x] 10.2 Wire testcontainers-backed PostgreSQL and MySQL helpers following the repository's testcontainers conventions; verify the helpers are reused rather than duplicated per adapter
 - [ ] 10.3 Implement `store/pgx` over `pgxpool` with `pgx.Tx` participation; verify it passes `storetest` on PostgreSQL
 - [ ] 10.4 Implement `store/gorm` executing `sqlcore` statements through `*gorm.DB`, with no GORM models and no `AutoMigrate`; verify it passes `storetest` on all three dialects
 - [ ] 10.5 Force explicit flattening in `store/gorm` rather than GORM's default savepoint nesting; verify the nested-transaction conformance case passes

@@ -82,11 +82,12 @@ func TestQueryTasksFilters(t *testing.T) {
 				assert.Contains(t, statement.SQL, `NOT EXISTS (SELECT 1 FROM "task_candidates"`)
 				assert.Contains(t, statement.SQL, `"t"."assignee" IS NULL`,
 					"pooled work is what a candidate may claim")
-				assert.Contains(t, statement.SQL, `"c"."kind" = $1 AND "c"."value" = $2`)
-				assert.Contains(t, statement.SQL, `"c"."value" IN ($4, $5)`)
+				assert.Contains(t, statement.SQL, `"t"."assignee" = $1`)
+				assert.Contains(t, statement.SQL, `"c"."kind" = $2 AND "c"."value" = $3`)
+				assert.Contains(t, statement.SQL, `"c"."value" IN ($5, $6)`)
 				assert.Equal(t, []any{
-					"user", "alice", "group", "finance-approvers", "managers",
-					"alice", "excluded", "alice", int64(51),
+					"alice", "user", "alice", "group", "finance-approvers", "managers",
+					"excluded", "alice", int64(51),
 				}, statement.Args)
 			},
 		},
@@ -94,8 +95,8 @@ func TestQueryTasksFilters(t *testing.T) {
 			name:  "a candidate with no groups omits the group disjunct entirely",
 			query: hmntsk.ResolvedQuery{Query: hmntsk.Query{Candidate: "alice"}},
 			assert: func(t *testing.T, statement sqlcore.Statement) {
-				assert.NotContains(t, statement.SQL, `"c"."kind" = $3`)
-				assert.Equal(t, []any{"user", "alice", "alice", "excluded", "alice", int64(51)},
+				assert.NotContains(t, statement.SQL, `"c"."kind" = $4`)
+				assert.Equal(t, []any{"alice", "user", "alice", "excluded", "alice", int64(51)},
 					statement.Args)
 			},
 		},

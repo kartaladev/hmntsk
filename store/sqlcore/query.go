@@ -124,6 +124,14 @@ func (b *Builder) candidateCondition(s *stmt, query hmntsk.ResolvedQuery) string
 	alias := b.dialect.Quote("t") + "."
 	candidates := b.Table(CandidatesTable)
 	child := b.dialect.Quote("c")
+	excluded := b.dialect.Quote("x")
+
+	// Every fragment is built in the order it will appear in the statement.
+	// With ? placeholders a fragment's position in the text is what binds it to
+	// its argument, so assembling the pieces in one order and emitting them in
+	// another silently shuffles the arguments — and the symptom is an inbox
+	// that quietly returns nothing.
+	held := "(" + alias + b.dialect.Quote("assignee") + " = " + s.bind(query.Candidate) + ")"
 
 	reach := []string{
 		"(" + child + "." + b.dialect.Quote("kind") + " = " + s.bind(string(CandidateUser)) +
@@ -146,9 +154,6 @@ func (b *Builder) candidateCondition(s *stmt, query hmntsk.ResolvedQuery) string
 		" WHERE " + child + "." + b.dialect.Quote("task_id") + " = " + alias + b.dialect.Quote("id") +
 		" AND (" + strings.Join(reach, " OR ") + ")))"
 
-	held := "(" + alias + b.dialect.Quote("assignee") + " = " + s.bind(query.Candidate) + ")"
-
-	excluded := b.dialect.Quote("x")
 	notExcluded := "NOT EXISTS (SELECT 1 FROM " + candidates + " AS " + excluded +
 		" WHERE " + excluded + "." + b.dialect.Quote("task_id") + " = " + alias + b.dialect.Quote("id") +
 		" AND " + excluded + "." + b.dialect.Quote("kind") + " = " + s.bind(string(CandidateExcluded)) +
