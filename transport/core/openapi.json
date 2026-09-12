@@ -1,0 +1,1922 @@
+{
+  "components": {
+    "schemas": {
+      "CreateTaskRequest": {
+        "properties": {
+          "callback": {
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "referenceParameters": {}
+            },
+            "required": [
+              "address"
+            ],
+            "type": "object"
+          },
+          "candidates": {
+            "properties": {
+              "excluded": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "groups": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "users": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          },
+          "correlation": {
+            "properties": {
+              "activityKey": {
+                "type": "string"
+              },
+              "extra": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "ownerRef": {
+                "type": "string"
+              },
+              "ownerType": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "deadlineSeconds": {
+            "type": "integer"
+          },
+          "dueAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "escalation": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "addGroups": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "addUsers": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "exemptInProgress": {
+                "type": "boolean"
+              },
+              "maxEscalations": {
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "id": {
+            "type": "string"
+          },
+          "input": {},
+          "priority": {
+            "type": "integer"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "error": {
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "currentVersion": {
+                "type": "integer"
+              },
+              "issues": {
+                "items": {
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "pointer": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "message": {
+                "type": "string"
+              },
+              "taskType": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "HistoryResponse": {
+        "properties": {
+          "records": {
+            "items": {
+              "properties": {
+                "actor": {
+                  "type": "string"
+                },
+                "at": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "comment": {
+                  "type": "string"
+                },
+                "from": {
+                  "type": "string"
+                },
+                "operation": {
+                  "type": "string"
+                },
+                "taskId": {
+                  "type": "string"
+                },
+                "to": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "taskId",
+                "version",
+                "operation",
+                "from",
+                "to",
+                "at"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "records"
+        ],
+        "type": "object"
+      },
+      "OperationRequest": {
+        "properties": {
+          "comment": {
+            "type": "string"
+          },
+          "delegate": {
+            "type": "string"
+          },
+          "output": {},
+          "patch": {},
+          "version": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "PageResponse": {
+        "properties": {
+          "nextCursor": {
+            "type": "string"
+          },
+          "tasks": {
+            "items": {
+              "properties": {
+                "assignee": {
+                  "type": "string"
+                },
+                "callback": {
+                  "properties": {
+                    "address": {
+                      "type": "string"
+                    },
+                    "referenceParameters": {}
+                  },
+                  "required": [
+                    "address"
+                  ],
+                  "type": "object"
+                },
+                "candidates": {
+                  "properties": {
+                    "excluded": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "groups": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "users": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                },
+                "closedAt": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "correlation": {
+                  "properties": {
+                    "activityKey": {
+                      "type": "string"
+                    },
+                    "extra": {
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    },
+                    "ownerRef": {
+                      "type": "string"
+                    },
+                    "ownerType": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "createdAt": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "createdBy": {
+                  "type": "string"
+                },
+                "dueAt": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "escalatedAt": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "escalation": {
+                  "properties": {
+                    "action": {
+                      "type": "string"
+                    },
+                    "addGroups": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "addUsers": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "exemptInProgress": {
+                      "type": "boolean"
+                    },
+                    "maxEscalations": {
+                      "type": "integer"
+                    }
+                  },
+                  "type": "object"
+                },
+                "escalationCount": {
+                  "type": "integer"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "input": {},
+                "lockedBy": {
+                  "type": "string"
+                },
+                "lockedUntil": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "output": {},
+                "priority": {
+                  "type": "integer"
+                },
+                "progress": {},
+                "reason": {
+                  "type": "string"
+                },
+                "startedAt": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "suspendedFrom": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "version": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "type",
+                "version",
+                "status",
+                "priority",
+                "candidates",
+                "createdAt",
+                "updatedAt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "tasks"
+        ],
+        "type": "object"
+      },
+      "Task": {
+        "properties": {
+          "assignee": {
+            "type": "string"
+          },
+          "callback": {
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "referenceParameters": {}
+            },
+            "required": [
+              "address"
+            ],
+            "type": "object"
+          },
+          "candidates": {
+            "properties": {
+              "excluded": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "groups": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "users": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          },
+          "closedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "correlation": {
+            "properties": {
+              "activityKey": {
+                "type": "string"
+              },
+              "extra": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "ownerRef": {
+                "type": "string"
+              },
+              "ownerType": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "dueAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "escalatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "escalation": {
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "addGroups": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "addUsers": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "exemptInProgress": {
+                "type": "boolean"
+              },
+              "maxEscalations": {
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "escalationCount": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "input": {},
+          "lockedBy": {
+            "type": "string"
+          },
+          "lockedUntil": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "output": {},
+          "priority": {
+            "type": "integer"
+          },
+          "progress": {},
+          "reason": {
+            "type": "string"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "suspendedFrom": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "version",
+          "status",
+          "priority",
+          "candidates",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "TaskTypeListResponse": {
+        "properties": {
+          "types": {
+            "items": {
+              "properties": {
+                "defaultDeadlineSeconds": {
+                  "type": "integer"
+                },
+                "defaultPriority": {
+                  "type": "integer"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "inputSchema": {},
+                "name": {
+                  "type": "string"
+                },
+                "outputSchema": {},
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "defaultPriority"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "types"
+        ],
+        "type": "object"
+      },
+      "TaskTypeResponse": {
+        "properties": {
+          "defaultDeadlineSeconds": {
+            "type": "integer"
+          },
+          "defaultPriority": {
+            "type": "integer"
+          },
+          "description": {
+            "type": "string"
+          },
+          "inputSchema": {},
+          "name": {
+            "type": "string"
+          },
+          "outputSchema": {},
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "defaultPriority"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "The task inbox and lifecycle contract of the hmntsk engine. Identical across every supported web framework binding. Authentication, authorisation of the caller's identity, rate limiting, CORS and TLS belong to the host; the engine takes the acting actor as an input the host establishes.",
+    "title": "hmntsk human task API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/task-types": {
+      "get": {
+        "operationId": "listTaskTypes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskTypeListResponse"
+                }
+              }
+            },
+            "description": "The operation succeeded."
+          }
+        },
+        "summary": "List the registered task types."
+      }
+    },
+    "/v1/task-types/{name}": {
+      "get": {
+        "operationId": "getTaskType",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskTypeResponse"
+                }
+              }
+            },
+            "description": "The operation succeeded."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No such task, task type or route."
+          }
+        },
+        "summary": "Read a task type's input and output schemas."
+      }
+    },
+    "/v1/tasks": {
+      "get": {
+        "operationId": "queryTasks",
+        "parameters": [
+          {
+            "description": "Tasks reserved for this actor.",
+            "in": "query",
+            "name": "assignee",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Tasks this actor may act on, with group membership resolved now.",
+            "in": "query",
+            "name": "candidate",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Restrict to these lifecycle states.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          {
+            "description": "Restrict to these task types.",
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          {
+            "description": "Correlation: the kind of thing that owns the task.",
+            "in": "query",
+            "name": "ownerType",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Correlation: the owning unit of work.",
+            "in": "query",
+            "name": "ownerRef",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Correlation: the step the task stands for.",
+            "in": "query",
+            "name": "activityKey",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Tasks due strictly before this instant.",
+            "in": "query",
+            "name": "dueBefore",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Continue a previous page.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Ordering by task identifier.",
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageResponse"
+                }
+              }
+            },
+            "description": "The operation succeeded."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request or its payload failed validation, or named a task type that is not registered."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request could not be completed. A failure to resolve group membership lands here rather than on 403: the engine could not decide, which is not the same as deciding against the caller."
+          }
+        },
+        "summary": "Query tasks by assignee, eligibility, status, type or correlation."
+      },
+      "post": {
+        "operationId": "createTask",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTaskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            },
+            "description": "The task was created."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request or its payload failed validation, or named a task type that is not registered."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request could not be completed. A failure to resolve group membership lands here rather than on 403: the engine could not decide, which is not the same as deciding against the caller."
+          }
+        },
+        "summary": "Create a task."
+      }
+    },
+    "/v1/tasks/{id}": {
+      "delete": {
+        "operationId": "cancelTask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperationRequest"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            },
+            "description": "The operation succeeded."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request or its payload failed validation, or named a task type that is not registered."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The acting actor is not eligible for the task, or is not its assignee."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No such task, task type or route."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The task has moved on since the version the caller observed, or the operation is not legal from its present state. The body carries the current version."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request could not be completed. A failure to resolve group membership lands here rather than on 403: the engine could not decide, which is not the same as deciding against the caller."
+          }
+        },
+        "summary": "Cancel a task."
+      },
+      "get": {
+        "operationId": "getTask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            },
+            "description": "The operation succeeded."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No such task, task type or route."
+          }
+        },
+        "summary": "Read one task."
+      }
+    },
+    "/v1/tasks/{id}/claim": {
+      "post": {
+        "operationId": "claimTask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperationRequest"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            },
+            "description": "The operation succeeded."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request or its payload failed validation, or named a task type that is not registered."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The acting actor is not eligible for the task, or is not its assignee."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No such task, task type or route."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The task has moved on since the version the caller observed, or the operation is not legal from its present state. The body carries the current version."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request could not be completed. A failure to resolve group membership lands here rather than on 403: the engine could not decide, which is not the same as deciding against the caller."
+          }
+        },
+        "summary": "Reserve a pooled task."
+      }
+    },
+    "/v1/tasks/{id}/complete": {
+      "post": {
+        "operationId": "completeTask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperationRequest"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            },
+            "description": "The operation succeeded."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request or its payload failed validation, or named a task type that is not registered."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The acting actor is not eligible for the task, or is not its assignee."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No such task, task type or route."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The task has moved on since the version the caller observed, or the operation is not legal from its present state. The body carries the current version."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request could not be completed. A failure to resolve group membership lands here rather than on 403: the engine could not decide, which is not the same as deciding against the caller."
+          }
+        },
+        "summary": "Close a task with an output payload."
+      }
+    },
+    "/v1/tasks/{id}/delegate": {
+      "post": {
+        "operationId": "delegateTask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperationRequest"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            },
+            "description": "The operation succeeded."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request or its payload failed validation, or named a task type that is not registered."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The acting actor is not eligible for the task, or is not its assignee."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No such task, task type or route."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The task has moved on since the version the caller observed, or the operation is not legal from its present state. The body carries the current version."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request could not be completed. A failure to resolve group membership lands here rather than on 403: the engine could not decide, which is not the same as deciding against the caller."
+          }
+        },
+        "summary": "Reassign a task to another eligible actor."
+      }
+    },
+    "/v1/tasks/{id}/escalate": {
+      "post": {
+        "operationId": "escalateTask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperationRequest"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            },
+            "description": "The operation succeeded."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request or its payload failed validation, or named a task type that is not registered."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The acting actor is not eligible for the task, or is not its assignee."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No such task, task type or route."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The task has moved on since the version the caller observed, or the operation is not legal from its present state. The body carries the current version."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request could not be completed. A failure to resolve group membership lands here rather than on 403: the engine could not decide, which is not the same as deciding against the caller."
+          }
+        },
+        "summary": "Apply a task's escalation policy."
+      }
+    },
+    "/v1/tasks/{id}/fail": {
+      "post": {
+        "operationId": "failTask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperationRequest"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            },
+            "description": "The operation succeeded."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request or its payload failed validation, or named a task type that is not registered."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The acting actor is not eligible for the task, or is not its assignee."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No such task, task type or route."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The task has moved on since the version the caller observed, or the operation is not legal from its present state. The body carries the current version."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request could not be completed. A failure to resolve group membership lands here rather than on 403: the engine could not decide, which is not the same as deciding against the caller."
+          }
+        },
+        "summary": "Record that the actor could not do the work."
+      }
+    },
+    "/v1/tasks/{id}/history": {
+      "get": {
+        "operationId": "getTaskHistory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryResponse"
+                }
+              }
+            },
+            "description": "The operation succeeded."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No such task, task type or route."
+          }
+        },
+        "summary": "Read a task's transition history."
+      }
+    },
+    "/v1/tasks/{id}/progress": {
+      "post": {
+        "operationId": "saveTaskProgress",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperationRequest"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            },
+            "description": "The operation succeeded."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request or its payload failed validation, or named a task type that is not registered."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The acting actor is not eligible for the task, or is not its assignee."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No such task, task type or route."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The task has moved on since the version the caller observed, or the operation is not legal from its present state. The body carries the current version."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request could not be completed. A failure to resolve group membership lands here rather than on 403: the engine could not decide, which is not the same as deciding against the caller."
+          }
+        },
+        "summary": "Apply an RFC 6902 patch to a task's saved progress."
+      }
+    },
+    "/v1/tasks/{id}/release": {
+      "post": {
+        "operationId": "releaseTask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperationRequest"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            },
+            "description": "The operation succeeded."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request or its payload failed validation, or named a task type that is not registered."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The acting actor is not eligible for the task, or is not its assignee."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No such task, task type or route."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The task has moved on since the version the caller observed, or the operation is not legal from its present state. The body carries the current version."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request could not be completed. A failure to resolve group membership lands here rather than on 403: the engine could not decide, which is not the same as deciding against the caller."
+          }
+        },
+        "summary": "Return a reserved task to its pool."
+      }
+    },
+    "/v1/tasks/{id}/resume": {
+      "post": {
+        "operationId": "resumeTask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperationRequest"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            },
+            "description": "The operation succeeded."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request or its payload failed validation, or named a task type that is not registered."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The acting actor is not eligible for the task, or is not its assignee."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No such task, task type or route."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The task has moved on since the version the caller observed, or the operation is not legal from its present state. The body carries the current version."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request could not be completed. A failure to resolve group membership lands here rather than on 403: the engine could not decide, which is not the same as deciding against the caller."
+          }
+        },
+        "summary": "Return a suspended task to the state it came from."
+      }
+    },
+    "/v1/tasks/{id}/start": {
+      "post": {
+        "operationId": "startTask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperationRequest"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            },
+            "description": "The operation succeeded."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request or its payload failed validation, or named a task type that is not registered."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The acting actor is not eligible for the task, or is not its assignee."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No such task, task type or route."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The task has moved on since the version the caller observed, or the operation is not legal from its present state. The body carries the current version."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request could not be completed. A failure to resolve group membership lands here rather than on 403: the engine could not decide, which is not the same as deciding against the caller."
+          }
+        },
+        "summary": "Begin work on a reserved task."
+      }
+    },
+    "/v1/tasks/{id}/suspend": {
+      "post": {
+        "operationId": "suspendTask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperationRequest"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            },
+            "description": "The operation succeeded."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request or its payload failed validation, or named a task type that is not registered."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The acting actor is not eligible for the task, or is not its assignee."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No such task, task type or route."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The task has moved on since the version the caller observed, or the operation is not legal from its present state. The body carries the current version."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request could not be completed. A failure to resolve group membership lands here rather than on 403: the engine could not decide, which is not the same as deciding against the caller."
+          }
+        },
+        "summary": "Withdraw a task from circulation."
+      }
+    }
+  }
+}

@@ -74,6 +74,30 @@ The system SHALL NOT escalate tasks in a terminal state or in `SUSPENDED`, and S
 - **WHEN** a policy exempts `IN_PROGRESS` tasks and a task in that state passes its deadline
 - **THEN** the task is not escalated
 
+### Requirement: Repeated escalation of the same task is bounded
+
+Widening a candidate pool SHALL NOT move the task's deadline, so an escalated task remains overdue. To stop it from being escalated on every subsequent sweep, the system SHALL retain the escalation lease rather than releasing it, so that a task becomes eligible for escalation again only once its lease expires. A task's escalation policy MAY additionally cap the total number of times that task is escalated.
+
+#### Scenario: A widened task is not escalated again immediately
+
+- **WHEN** a sweep escalates an overdue task by widening its pool, and another sweep runs before the lease expires
+- **THEN** the task is not escalated a second time
+
+#### Scenario: The next escalation waits for the lease to expire
+
+- **WHEN** the lease on an escalated, still-overdue task expires and a sweep runs
+- **THEN** the task is escalated again and its escalation count increases
+
+#### Scenario: A policy caps total escalations
+
+- **WHEN** a task whose policy permits at most two escalations has already been escalated twice
+- **THEN** further sweeps do not escalate it, however long it remains overdue
+
+#### Scenario: An exempted task is not re-examined every sweep
+
+- **WHEN** a sweep leaves a task alone because its policy exempts it
+- **THEN** the task's lease is retained, so the following sweep does not reconsider it until the lease expires
+
 ### Requirement: Superseded tasks become obsolete
 
 When escalation replaces a task rather than widening it, the superseded task SHALL move to `OBSOLETE` and produce an obsolescence event.

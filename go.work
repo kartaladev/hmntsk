@@ -1,0 +1,15 @@
+go 1.26.0
+
+use (
+	.
+	./store/gorm
+	./store/pgx
+	./store/sql
+	./store/sqlcore
+	./storetest
+	./transport/core
+	./transport/fiber
+	./transport/gin
+	./transport/http
+	./transporttest
+)
