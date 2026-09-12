@@ -71,7 +71,7 @@
 - [x] 9.1 Define the `Dialect` interface (placeholders, quoting, column types, lock-clause support, returning support) with PostgreSQL, MySQL and SQLite implementations; verify a table test of generated fragments per dialect
 - [x] 9.2 Implement the statement builders for all task reads and writes, depending on no `RETURNING`; verify generated SQL and argument order per dialect
 - [x] 9.3 Implement conditional-update statements carrying the version predicate for every mutation; verify a rows-affected value of zero maps to the conflict error
-- [ ] 9.4 Implement the candidate child-table statements for inbox and eligibility queries; verify the generated query plans use the intended index on each dialect
+- [x] 9.4 Implement the candidate child-table statements for inbox and eligibility queries; verify the generated query plans use the intended index on each dialect
 - [x] 9.5 Implement keyset pagination statements; verify ordering is deterministic across dialects
 - [x] 9.6 Author per-dialect DDL for `tasks`, `task_candidates`, `task_history`, `task_outbox` and the type table, with collation pinned on identifier columns and `DATETIME(6)` on MySQL; verify the DDL applies cleanly on all three engines
 - [x] 9.7 Implement the configurable table prefix across DDL and all statements; verify a prefixed schema passes the same suite
