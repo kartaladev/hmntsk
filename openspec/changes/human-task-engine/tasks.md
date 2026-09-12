@@ -98,21 +98,21 @@
 
 ## 12. Transport conformance suite
 
-- [ ] 12.1 Build `transporttest` exporting `RunSuite(t, mount)` covering every requirement of spec `task-http-api`
-- [ ] 12.2 Add cases for every lifecycle operation reachable over HTTP
-- [ ] 12.3 Add error-mapping cases for 400, 403, 404 and 409 including the conflict body reporting the current version
-- [ ] 12.4 Add payload pass-through cases for large integers and unknown fields, and inbox cases for mixed types and stable paging
+- [x] 12.1 Build `transporttest` exporting `RunSuite(t, mount)` covering every requirement of spec `task-http-api`
+- [x] 12.2 Add cases for every lifecycle operation reachable over HTTP
+- [x] 12.3 Add error-mapping cases for 400, 403, 404 and 409 including the conflict body reporting the current version
+- [x] 12.4 Add payload pass-through cases for large integers and unknown fields, and inbox cases for mixed types and stable paging
 
 ## 13. transport/core and bindings
 
-- [ ] 13.1 Define request and response DTOs and the framework-independent handler signature; verify no standard-library HTTP type appears in the seam
-- [ ] 13.2 Implement the route table, request validation and error-to-status mapping; verify against `transporttest` with a trivial in-process binder
-- [ ] 13.3 Implement the task type schema endpoint; verify a client can retrieve schemas for an unfamiliar type
-- [ ] 13.4 Generate the OpenAPI document from the route table; verify the generated document is regenerated and diff-clean in CI
-- [ ] 13.5 Implement `transport/http` over `net/http`; verify it passes `transporttest`
+- [x] 13.1 Define request and response DTOs and the framework-independent handler signature; verify no standard-library HTTP type appears in the seam
+- [x] 13.2 Implement the route table, request validation and error-to-status mapping; verify against `transporttest` with a trivial in-process binder
+- [x] 13.3 Implement the task type schema endpoint; verify a client can retrieve schemas for an unfamiliar type
+- [x] 13.4 Generate the OpenAPI document from the route table; verify the generated document is regenerated and diff-clean in CI
+- [x] 13.5 Implement `transport/http` over `net/http`; verify it passes `transporttest`
 - [ ] 13.6 Implement `transport/gin`; verify it passes `transporttest`
 - [ ] 13.7 Implement `transport/fiber` for Fiber v3 without a fasthttp-to-net/http conversion layer; verify it passes `transporttest`
-- [ ] 13.8 Take the acting actor from host-established request state; verify the engine performs no authentication of its own
+- [x] 13.8 Take the acting actor from host-established request state; verify the engine performs no authentication of its own
 
 ## 14. Documentation, CI and release
 
