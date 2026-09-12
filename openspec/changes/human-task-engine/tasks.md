@@ -1,9 +1,9 @@
 ## 1. Repository and module scaffolding
 
-- [ ] 1.1 Create the core module `go.mod` at the repository root with the Go baseline from design D19; verify `go build ./...` succeeds on an empty package
-- [ ] 1.2 Create `go.work` and the ten module directories (`store/sqlcore`, `store/sql`, `store/pgx`, `store/gorm`, `transport/core`, `transport/http`, `transport/gin`, `transport/fiber`, `storetest`, `transporttest`), each with its own `go.mod`; verify `go work sync` succeeds and `go build ./...` passes in every module
-- [ ] 1.3 Add `.golangci.yml` and a `Makefile` with `lint`, `test` and `test-integration` targets; verify `make lint` passes on the empty tree
-- [ ] 1.4 Add a dependency-direction test asserting the core module imports no driver or web-framework package; verify it fails when a forbidden import is added
+- [x] 1.1 Create the core module `go.mod` at the repository root with the Go baseline from design D19; verify `go build ./...` succeeds on an empty package
+- [x] 1.2 Create `go.work` and the ten module directories (`store/sqlcore`, `store/sql`, `store/pgx`, `store/gorm`, `transport/core`, `transport/http`, `transport/gin`, `transport/fiber`, `storetest`, `transporttest`), each with its own `go.mod`; verify `go work sync` succeeds and `go build ./...` passes in every module
+- [x] 1.3 Add `.golangci.yml` and a `Makefile` with `lint`, `test` and `test-integration` targets; verify `make lint` passes on the empty tree
+- [x] 1.4 Add a dependency-direction test asserting the core module imports no driver or web-framework package; verify it fails when a forbidden import is added
 
 ## 2. Core domain types
 
