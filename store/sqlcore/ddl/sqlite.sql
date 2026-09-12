@@ -9,7 +9,8 @@
 -- written out anyway so that the three schemas say the same thing in the same
 -- place, and so that schema verification has something to check.
 --
--- {{PREFIX}} is replaced with the host's configured table prefix.
+-- Table names below carry the host's configured prefix, applied when this file
+-- is read; with no prefix configured they are exactly as written.
 
 CREATE TABLE IF NOT EXISTS "{{PREFIX}}tasks" (
     "id"                 TEXT COLLATE BINARY NOT NULL PRIMARY KEY,

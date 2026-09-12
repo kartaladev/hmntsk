@@ -15,7 +15,8 @@
 -- and rewrites number literals, and the engine promises to return a payload
 -- exactly as it was supplied. Nothing queries inside a payload.
 --
--- {{PREFIX}} is replaced with the host's configured table prefix.
+-- Table names below carry the host's configured prefix, applied when this file
+-- is read; with no prefix configured they are exactly as written.
 
 CREATE TABLE IF NOT EXISTS `{{PREFIX}}tasks` (
     `id`                 VARCHAR(64)  COLLATE utf8mb4_0900_as_cs NOT NULL,

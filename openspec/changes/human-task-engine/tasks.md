@@ -116,9 +116,9 @@
 
 ## 14. Documentation, CI and release
 
-- [ ] 14.1 Write package documentation for every exported type and function in the core module; verify `go doc` output is complete and the linter's doc-comment checks pass
-- [ ] 14.2 Write the README covering the wiring model, the transaction contract, and a worked embedding example; verify the example compiles as an example test
-- [ ] 14.3 Document the schema, the prefix option and the migration workflow per dialect; verify the documented statements match the embedded DDL by test
-- [ ] 14.4 Add the CI workflow running lint, unit tests, and the seven-combination store matrix plus three transport suites; verify the matrix runs green end to end
-- [ ] 14.5 Add `govulncheck` and race-detector runs to CI; verify both pass
-- [ ] 14.6 Document the per-module tagging scheme and release order, with core and `store/sql` released first; verify the documented order is reflected in the release tooling
+- [x] 14.1 Write package documentation for every exported type and function in the core module; verify `go doc` output is complete and the linter's doc-comment checks pass
+- [x] 14.2 Write the README covering the wiring model, the transaction contract, and a worked embedding example; verify the example compiles as an example test
+- [x] 14.3 Document the schema, the prefix option and the migration workflow per dialect; verify the documented statements match the embedded DDL by test
+- [x] 14.4 Add the CI workflow running lint, unit tests, and the seven-combination store matrix plus three transport suites; verify the matrix runs green end to end
+- [x] 14.5 Add `govulncheck` and race-detector runs to CI; verify both pass
+- [x] 14.6 Document the per-module tagging scheme and release order, with core and `store/sql` released first; verify the documented order is reflected in the release tooling

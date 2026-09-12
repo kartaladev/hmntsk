@@ -1,0 +1,144 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.26"
+  # golangci-lint type-checks the standard library from source, so it cannot
+  # read a toolchain newer than the one it was built with. Pin lint to the
+  # module baseline.
+  LINT_TOOLCHAIN: go1.26.8
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: "**/go.sum"
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
+      - run: make lint
+
+  unit:
+    name: unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: "**/go.sum"
+      - name: Core, sqlcore and contract tests
+        run: |
+          set -e
+          for module in . store/sqlcore transport/core storetest transporttest; do
+            echo "==> $module"
+            (cd "$module" && go test -count=1 ./...)
+          done
+
+  # The storage conformance suite, once per valid driver-by-dialect combination.
+  # Seven and not nine, because pgx is PostgreSQL-only. PostgreSQL and MySQL are
+  # started by testcontainers against the runner's own Docker daemon; SQLite
+  # runs in-process, which is what makes the suite cheap enough to run on every
+  # commit.
+  store-matrix:
+    name: store ${{ matrix.module }} / ${{ matrix.dialect }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { module: store/sql, dialect: postgres, run: TestStoreOnPostgres }
+          - { module: store/sql, dialect: mysql, run: TestStoreOnMySQL }
+          - { module: store/sql, dialect: sqlite, run: TestStoreOnSQLite }
+          - { module: store/pgx, dialect: postgres, run: TestStoreOnPostgres }
+          - { module: store/gorm, dialect: postgres, run: TestStoreOnPostgres }
+          - { module: store/gorm, dialect: mysql, run: TestStoreOnMySQL }
+          - { module: store/gorm, dialect: sqlite, run: TestStoreOnSQLite }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: "**/go.sum"
+      - name: Conformance suite
+        working-directory: ${{ matrix.module }}
+        run: go test -count=1 -timeout 30m -run "^${{ matrix.run }}$" ./...
+
+  # The same contract, once per framework binding.
+  transport-matrix:
+    name: transport ${{ matrix.module }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [transport/http, transport/gin, transport/fiber]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: "**/go.sum"
+      - name: Conformance suite
+        working-directory: ${{ matrix.module }}
+        run: go test -count=1 -timeout 15m ./...
+
+  # The race detector matters most where this project is least conventional:
+  # the escalation sweep, the after-commit dispatch and the adapters' shared
+  # connections are all genuinely concurrent.
+  race:
+    name: race detector
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: "**/go.sum"
+      - run: make test-race
+
+  vulnerabilities:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: "**/go.sum"
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - run: make vuln
+
+  # The OpenAPI document is generated from the route table and committed. This
+  # fails if the two have drifted, which is the whole reason it is committed.
+  generated:
+    name: generated artefacts are current
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: "**/go.sum"
+      - name: Regenerate and diff
+        run: |
+          set -e
+          (cd transport/core && go test -count=1 -run TestOpenAPIDocument -update ./...)
+          go generate ./...
+          git diff --exit-code

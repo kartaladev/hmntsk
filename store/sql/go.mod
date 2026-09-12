@@ -1,6 +1,6 @@
 module github.com/kartaladev/hmntsk/store/sql
 
-go 1.26
+go 1.26.0
 
 // The dependencies on github.com/kartaladev/hmntsk,
 // github.com/kartaladev/hmntsk/store/sqlcore and
