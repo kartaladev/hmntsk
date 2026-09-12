@@ -40,16 +40,16 @@
 
 ## 6. Ports, service operations and events
 
-- [ ] 6.1 Define the `Repository`, `Transactor`, `Clock` and `EventSink` ports, and the combined `Store` interface of design D5; verify a compile-time assertion that a test double satisfies `Store` whole
-- [ ] 6.2 Define the closed event catalogue of spec `task-events` with correlation data on every event; verify a test asserts one event type exists per lifecycle transition
-- [ ] 6.3 Implement the `Service` with all lifecycle operations wrapping transitions in `Transactor.Do`; verify each operation's happy path against an in-memory store
-- [ ] 6.4 Implement the in-transaction sink append plus after-commit dispatch using `context.WithoutCancel`; verify dispatch still runs when the request context is cancelled immediately after commit
-- [ ] 6.5 Reject a non-transactional sink at construction; verify `New` returns a configuration error for that wiring
-- [ ] 6.6 Implement the pending-dispatch return path for host-led transactions; verify events are withheld until the host invokes it
-- [ ] 6.7 Implement `SaveProgress` with RFC 6902 patch application, shape validation and implicit `RESERVED`→`IN_PROGRESS`; verify the first save transitions and later saves do not
-- [ ] 6.8 Verify no event is produced by a progress save, and none by any refused operation
-- [ ] 6.9 Implement `Query` with filters for assignee, eligibility, status, type and correlation, plus keyset pagination; verify paging is stable while new tasks are inserted
-- [ ] 6.10 Implement the in-memory store adapter used for core tests; verify it passes the core service tests
+- [x] 6.1 Define the `Repository`, `Transactor`, `Clock` and `EventSink` ports, and the combined `Store` interface of design D5; verify a compile-time assertion that a test double satisfies `Store` whole
+- [x] 6.2 Define the closed event catalogue of spec `task-events` with correlation data on every event; verify a test asserts one event type exists per lifecycle transition
+- [x] 6.3 Implement the `Service` with all lifecycle operations wrapping transitions in `Transactor.Do`; verify each operation's happy path against an in-memory store
+- [x] 6.4 Implement the in-transaction sink append plus after-commit dispatch using `context.WithoutCancel`; verify dispatch still runs when the request context is cancelled immediately after commit
+- [x] 6.5 Reject a non-transactional sink at construction; verify `New` returns a configuration error for that wiring
+- [x] 6.6 Implement the pending-dispatch return path for host-led transactions; verify events are withheld until the host invokes it
+- [x] 6.7 Implement `SaveProgress` with RFC 6902 patch application, shape validation and implicit `RESERVED`→`IN_PROGRESS`; verify the first save transitions and later saves do not
+- [x] 6.8 Verify no event is produced by a progress save, and none by any refused operation
+- [x] 6.9 Implement `Query` with filters for assignee, eligibility, status, type and correlation, plus keyset pagination; verify paging is stable while new tasks are inserted
+- [x] 6.10 Implement the in-memory store adapter used for core tests; verify it passes the core service tests
 
 ## 7. Typed facade
 
