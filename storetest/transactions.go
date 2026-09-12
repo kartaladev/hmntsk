@@ -140,7 +140,7 @@ func runTransactionCases(t *testing.T, factory Factory) {
 		}
 	})
 
-	t.Run("an inner failure the outer scope swallows still aborts everything", func(t *testing.T) {
+	t.Run("a nested scope takes no savepoint", func(t *testing.T) {
 		h := factory(t)
 
 		var seq ids
@@ -153,8 +153,6 @@ func runTransactionCases(t *testing.T, factory Factory) {
 				return err
 			}
 
-			// A host that catches the inner error and carries on is exactly the
-			// case savepoint nesting would silently rescue.
 			innerErr := h.Store.Do(ctx, func(ctx context.Context) error {
 				if err := h.Store.Create(ctx, NewTask(inner)); err != nil {
 					return err
@@ -162,13 +160,25 @@ func runTransactionCases(t *testing.T, factory Factory) {
 
 				return errCaseFailure
 			})
+			require.ErrorIs(t, innerErr, errCaseFailure)
+
+			// This is the whole difference between joining and nesting. A
+			// savepoint would have been released by the inner scope's failure,
+			// taking its write with it and leaving this one alive; joining
+			// leaves both writes exactly where they were, in one transaction
+			// that is still entirely undecided.
+			_, getErr := h.Store.Get(ctx, inner)
+			assert.NoError(t, getErr,
+				"a failed inner scope must not have discarded its own write behind a savepoint")
 
 			return innerErr
 		})
 		require.ErrorIs(t, err, errCaseFailure)
 
-		_, getErr := h.Store.Get(t.Context(), outer)
-		assert.ErrorIs(t, getErr, hmntsk.ErrNotFound)
+		for _, id := range []hmntsk.TaskID{outer, inner} {
+			_, getErr := h.Store.Get(t.Context(), id)
+			assert.ErrorIsf(t, getErr, hmntsk.ErrNotFound, "%s must not be durable", id)
+		}
 	})
 
 	t.Run("the repository and the transactor share one connection", func(t *testing.T) {

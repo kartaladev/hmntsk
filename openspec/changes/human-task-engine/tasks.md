@@ -83,9 +83,9 @@
 - [x] 10.1 Implement `store/sql` over `database/sql` with `Store`, transaction join/flatten and context-carried handle helpers; verify it passes `storetest` on PostgreSQL, MySQL and SQLite
 - [x] 10.2 Wire testcontainers-backed PostgreSQL and MySQL helpers following the repository's testcontainers conventions; verify the helpers are reused rather than duplicated per adapter
 - [x] 10.3 Implement `store/pgx` over `pgxpool` with `pgx.Tx` participation; verify it passes `storetest` on PostgreSQL
-- [ ] 10.4 Implement `store/gorm` executing `sqlcore` statements through `*gorm.DB`, with no GORM models and no `AutoMigrate`; verify it passes `storetest` on all three dialects
-- [ ] 10.5 Force explicit flattening in `store/gorm` rather than GORM's default savepoint nesting; verify the nested-transaction conformance case passes
-- [ ] 10.6 Implement `ContextWithTx` and `TxFromContext` for each adapter; verify host-led and engine-led transaction cases pass for all seven driver × dialect combinations
+- [x] 10.4 Implement `store/gorm` executing `sqlcore` statements through `*gorm.DB`, with no GORM models and no `AutoMigrate`; verify it passes `storetest` on all three dialects
+- [x] 10.5 Force explicit flattening in `store/gorm` rather than GORM's default savepoint nesting; verify the nested-transaction conformance case passes
+- [x] 10.6 Implement `ContextWithTx` and `TxFromContext` for each adapter; verify host-led and engine-led transaction cases pass for all seven driver × dialect combinations
 
 ## 11. Escalation
 
