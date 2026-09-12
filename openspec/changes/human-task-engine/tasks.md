@@ -23,11 +23,11 @@
 
 ## 4. Task type registry
 
-- [ ] 4.1 Define `TypeSpec` (input/output schema, default priority, default deadline, escalation policy, assignment defaults) and the in-memory registry; verify lookup of an unregistered type returns the unregistered-type error
-- [ ] 4.2 Implement `Register` with conflict detection; verify identical re-registration succeeds and a differing re-registration fails per spec `task-types`
-- [ ] 4.3 Integrate a JSON Schema validator behind an internal interface; verify shape-only validation accepts an incomplete payload and rejects a mis-typed field
-- [ ] 4.4 Implement full validation used at completion; verify a payload missing a required field is rejected
-- [ ] 4.5 Implement default application and per-task override at creation; verify an explicit due date wins over the type default
+- [x] 4.1 Define `TypeSpec` (input/output schema, default priority, default deadline, escalation policy, assignment defaults) and the in-memory registry; verify lookup of an unregistered type returns the unregistered-type error
+- [x] 4.2 Implement `Register` with conflict detection; verify identical re-registration succeeds and a differing re-registration fails per spec `task-types`
+- [x] 4.3 Integrate a JSON Schema validator behind an internal interface; verify shape-only validation accepts an incomplete payload and rejects a mis-typed field
+- [x] 4.4 Implement full validation used at completion; verify a payload missing a required field is rejected
+- [x] 4.5 Implement default application and per-task override at creation; verify an explicit due date wins over the type default
 
 ## 5. Assignment
 
