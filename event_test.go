@@ -88,6 +88,58 @@ func TestEventTypeValid(t *testing.T) {
 	}
 }
 
+// TestEventAudienceDoesNotAliasTheTask proves an event's audience snapshot is a
+// copy: changing the task afterwards never changes what the event says.
+func TestEventAudienceDoesNotAliasTheTask(t *testing.T) {
+	t.Parallel()
+
+	type testCase struct {
+		name   string
+		mutate func(task *hmntsk.Task)
+		assert func(t *testing.T, event hmntsk.Event)
+	}
+
+	cases := []testCase{
+		{
+			name:   "changing the task's users leaves the snapshot alone",
+			mutate: func(task *hmntsk.Task) { task.Candidates.Users[0] = "changed" },
+			assert: func(t *testing.T, event hmntsk.Event) {
+				assert.Equal(t, []string{testActor, testOther}, event.Candidates.Users)
+			},
+		},
+		{
+			name:   "changing the task's groups leaves the snapshot alone",
+			mutate: func(task *hmntsk.Task) { task.Candidates.Groups[0] = "changed" },
+			assert: func(t *testing.T, event hmntsk.Event) {
+				assert.Equal(t, []string{"managers"}, event.Candidates.Groups)
+			},
+		},
+		{
+			name:   "changing the task's exclusions leaves the snapshot alone",
+			mutate: func(task *hmntsk.Task) { task.Candidates.Excluded[0] = "changed" },
+			assert: func(t *testing.T, event hmntsk.Event) {
+				assert.Equal(t, []string{testExcluded}, event.Candidates.Excluded)
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			task := fixture(hmntsk.StatusReady)
+			task.Candidates.Groups = []string{"managers"}
+
+			next, events, err := task.Claim(testActor, testNow)
+			require.NoError(t, err)
+			require.Len(t, events, 1)
+
+			tc.mutate(&next)
+			tc.assert(t, events[0])
+		})
+	}
+}
+
 // TestEveryEventCarriesCorrelation walks every lifecycle operation and asserts
 // the event it produces carries the task's correlation data and names no
 // caller-specific type.

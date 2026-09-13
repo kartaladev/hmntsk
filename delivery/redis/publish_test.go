@@ -138,6 +138,14 @@ func (s *publishSuite) TestPublishesEveryEventWithItsRoutingData() {
 				require.NotNil(t, event.Callback)
 				require.Equal(t, "https://example.invalid/hooks/tasks", event.Callback.Address)
 				require.Equal(t, map[string]string{"tenant": "acme"}, event.Correlation.Extra)
+
+				// The audience snapshot travels in the event field only; the flat
+				// field set above is unchanged by it.
+				assert.Equal(t, hmntsk.CandidatePool{
+					Users: []string{"alice", "bob"}, Groups: []string{"finance-approvers"}, Excluded: []string{"mallory"},
+				}, event.Candidates)
+				assert.Equal(t, "carol", event.PreviousAssignee)
+				assert.Equal(t, "owner", event.CreatedBy)
 			},
 		},
 		{

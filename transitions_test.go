@@ -12,8 +12,10 @@ import (
 )
 
 const (
-	testActor = "alice"
-	testOther = "bob"
+	testActor    = "alice"
+	testOther    = "bob"
+	testCreator  = "owner"
+	testExcluded = "mallory"
 )
 
 var testNow = time.Date(2026, time.March, 1, 12, 0, 0, 0, time.UTC)
@@ -27,12 +29,13 @@ func fixture(status hmntsk.Status) hmntsk.Task {
 		Version:    4,
 		Status:     status,
 		Priority:   hmntsk.PriorityDefault,
-		Candidates: hmntsk.CandidatePool{Users: []string{testActor, testOther}},
+		Candidates: fixturePool(),
 		Correlation: hmntsk.CorrelationData{
 			OwnerType: "process", OwnerRef: "p-1", ActivityKey: "approve",
 		},
 		Callback:  &hmntsk.CallbackTarget{Address: "https://host.example/hook"},
 		Input:     json.RawMessage(`{"amount":10}`),
+		CreatedBy: testCreator,
 		CreatedAt: testNow.Add(-time.Hour),
 		UpdatedAt: testNow.Add(-time.Hour),
 	}
@@ -68,6 +71,21 @@ type transitionCase struct {
 	task   hmntsk.Task
 	invoke func(task hmntsk.Task) (hmntsk.Task, []hmntsk.Event, error)
 	assert func(t *testing.T, next hmntsk.Task, events []hmntsk.Event, err error)
+}
+
+// fixturePool is the candidate pool every fixture carries.
+func fixturePool() hmntsk.CandidatePool {
+	return hmntsk.CandidatePool{Users: []string{testActor, testOther}, Excluded: []string{testExcluded}}
+}
+
+// assertAudience checks the audience snapshot an event carries: the pool after
+// the transition, the holder it replaced, if any, and the task's creator.
+func assertAudience(t *testing.T, event hmntsk.Event, pool hmntsk.CandidatePool, previous string) {
+	t.Helper()
+
+	assert.Equal(t, pool, event.Candidates, "the event carries the pool after the transition")
+	assert.Equal(t, previous, event.PreviousAssignee, "the event names only a holder it replaced")
+	assert.Equal(t, testCreator, event.CreatedBy, "every event names the task's creator")
 }
 
 // runTransitionCases executes the shared checks that hold for every transition —
@@ -131,6 +149,7 @@ func TestTransitionsHappyPaths(t *testing.T) {
 				assert.Equal(t, hmntsk.StatusReady, next.Status)
 				assert.Empty(t, next.Assignee)
 				assert.Equal(t, hmntsk.EventTypeCreated, events[0].Type)
+				assertAudience(t, events[0], fixturePool(), "")
 			},
 		},
 		{
@@ -157,6 +176,7 @@ func TestTransitionsHappyPaths(t *testing.T) {
 				assert.Equal(t, hmntsk.StatusReserved, next.Status)
 				assert.Equal(t, testActor, next.Assignee)
 				assert.Equal(t, hmntsk.EventTypeClaimed, events[0].Type)
+				assertAudience(t, events[0], fixturePool(), "")
 			},
 		},
 		{
@@ -171,6 +191,7 @@ func TestTransitionsHappyPaths(t *testing.T) {
 				assert.Empty(t, next.Assignee)
 				assert.Equal(t, []string{testActor, testOther}, next.Candidates.Users)
 				assert.Equal(t, "handing back", events[0].Transition.Comment)
+				assertAudience(t, events[0], fixturePool(), testActor)
 			},
 		},
 		{
@@ -185,6 +206,7 @@ func TestTransitionsHappyPaths(t *testing.T) {
 				require.NotNil(t, next.StartedAt)
 				assert.Equal(t, hmntsk.NormalizeTime(testNow), *next.StartedAt)
 				assert.Equal(t, hmntsk.EventTypeStarted, events[0].Type)
+				assertAudience(t, events[0], fixturePool(), "")
 			},
 		},
 		{
@@ -201,6 +223,7 @@ func TestTransitionsHappyPaths(t *testing.T) {
 					"delegation must not lose the work already done")
 				assert.NotNil(t, next.StartedAt)
 				assert.Equal(t, hmntsk.EventTypeDelegated, events[0].Type)
+				assertAudience(t, events[0], fixturePool(), testActor)
 			},
 		},
 		{
@@ -215,6 +238,47 @@ func TestTransitionsHappyPaths(t *testing.T) {
 				require.NotNil(t, next.ClosedAt)
 				assert.Equal(t, hmntsk.EventTypeCancelled, events[0].Type)
 				assert.Equal(t, "no longer needed", events[0].Reason)
+				assertAudience(t, events[0], fixturePool(), "")
+			},
+		},
+		{
+			name: "complete carries the audience but names no previous holder",
+			task: fixture(hmntsk.StatusInProgress),
+			invoke: func(task hmntsk.Task) (hmntsk.Task, []hmntsk.Event, error) {
+				return task.Complete(testActor, json.RawMessage(`{"approved":true}`), "", testNow)
+			},
+			assert: func(t *testing.T, _ hmntsk.Task, events []hmntsk.Event, err error) {
+				require.NoError(t, err)
+				assertAudience(t, events[0], fixturePool(), "")
+			},
+		},
+		{
+			name: "suspend carries the audience but names no previous holder",
+			task: fixture(hmntsk.StatusReserved),
+			invoke: func(task hmntsk.Task) (hmntsk.Task, []hmntsk.Event, error) {
+				return task.Suspend(testActor, "", testNow)
+			},
+			assert: func(t *testing.T, _ hmntsk.Task, events []hmntsk.Event, err error) {
+				require.NoError(t, err)
+				assertAudience(t, events[0], fixturePool(), "")
+			},
+		},
+		{
+			name: "a widening escalation carries the widened pool",
+			task: fixture(hmntsk.StatusReady),
+			invoke: func(task hmntsk.Task) (hmntsk.Task, []hmntsk.Event, error) {
+				return task.Escalate("system", &hmntsk.EscalationPolicy{
+					Action: hmntsk.EscalationWiden, AddUsers: []string{"carol"}, AddGroups: []string{"managers"},
+				}, "deadline passed", testNow)
+			},
+			assert: func(t *testing.T, next hmntsk.Task, events []hmntsk.Event, err error) {
+				require.NoError(t, err)
+				assertAudience(t, events[0], hmntsk.CandidatePool{
+					Users:    []string{testActor, testOther, "carol"},
+					Groups:   []string{"managers"},
+					Excluded: []string{testExcluded},
+				}, "")
+				assert.Equal(t, next.Candidates, events[0].Candidates)
 			},
 		},
 		{

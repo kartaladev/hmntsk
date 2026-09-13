@@ -80,6 +80,14 @@ type PayloadEvent struct {
 	Actor string `json:"actor,omitempty"`
 	// Assignee is the task's assignee after the transition.
 	Assignee string `json:"assignee,omitempty"`
+	// Candidates is the task's candidate pool after the transition, exclusions
+	// included. Groups are named, never expanded into members.
+	Candidates hmntsk.CandidatePool `json:"candidates,omitzero"`
+	// PreviousAssignee is the holder the transition replaced, present only on
+	// a release or a delegation.
+	PreviousAssignee string `json:"previousAssignee,omitempty"`
+	// CreatedBy is who created the task.
+	CreatedBy string `json:"createdBy,omitempty"`
 	// OccurredAt is when the transition happened.
 	OccurredAt time.Time `json:"occurredAt"`
 	// Reason is the free text supplied with a failure, cancellation or fault.
@@ -146,17 +154,20 @@ func newPayload(event hmntsk.Event, deliveryID string, deliveredAt time.Time) Pa
 		DeliveryID:  deliveryID,
 		DeliveredAt: deliveredAt,
 		Event: PayloadEvent{
-			ID:         event.ID,
-			Type:       event.Type,
-			TaskID:     event.TaskID,
-			TaskType:   event.TaskType,
-			Status:     event.Status,
-			Version:    event.Version,
-			Actor:      event.Actor,
-			Assignee:   event.Assignee,
-			OccurredAt: event.OccurredAt,
-			Reason:     event.Reason,
-			Output:     event.Output,
+			ID:               event.ID,
+			Type:             event.Type,
+			TaskID:           event.TaskID,
+			TaskType:         event.TaskType,
+			Status:           event.Status,
+			Version:          event.Version,
+			Actor:            event.Actor,
+			Assignee:         event.Assignee,
+			Candidates:       event.Candidates,
+			PreviousAssignee: event.PreviousAssignee,
+			CreatedBy:        event.CreatedBy,
+			OccurredAt:       event.OccurredAt,
+			Reason:           event.Reason,
+			Output:           event.Output,
 		},
 		Correlation: event.Correlation,
 	}

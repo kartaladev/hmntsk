@@ -368,9 +368,18 @@ func (t Task) record(
 		Version:     next.Version,
 		Actor:       actor,
 		Assignee:    next.Assignee,
+		Candidates:  snapshotPool(next.Candidates),
+		CreatedBy:   next.CreatedBy,
 		OccurredAt:  at,
 		Correlation: next.Correlation.Clone(),
 		Transition:  transition,
+	}
+
+	// A holder is named only when there was one and the transition replaced
+	// them, so that "the holder changed" is something a consumer reads rather
+	// than computes.
+	if t.Assignee != "" && t.Assignee != next.Assignee {
+		event.PreviousAssignee = t.Assignee
 	}
 
 	if next.Callback != nil {
@@ -386,6 +395,27 @@ func (t Task) record(
 	}
 
 	return next, []Event{event}
+}
+
+// snapshotPool copies a pool for an event, so that the event never aliases the
+// task's slices. Empty slices become nil: a store that round-trips the event
+// through JSON drops them either way, and the snapshot must read back equal on
+// every store.
+func snapshotPool(pool CandidatePool) CandidatePool {
+	return CandidatePool{
+		Users:    cloneNonEmpty(pool.Users),
+		Groups:   cloneNonEmpty(pool.Groups),
+		Excluded: cloneNonEmpty(pool.Excluded),
+	}
+}
+
+// cloneNonEmpty copies values, returning nil rather than an empty slice.
+func cloneNonEmpty(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	return slices.Clone(values)
 }
 
 // requireActor rejects an operation invoked without an acting actor.

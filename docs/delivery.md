@@ -85,6 +85,10 @@ delivery. **Route on the body if you need a guarantee.**
     "taskType": "approval",
     "status": "COMPLETED",
     "version": 4,
+    "actor": "alice",
+    "assignee": "alice",
+    "candidates": { "users": ["alice", "bob"], "groups": ["loan-officers"] },
+    "createdBy": "origination-service",
     "occurredAt": "2026-03-01T12:00:00Z",
     "output": { "approved": true }
   },
@@ -98,6 +102,19 @@ names, same order, same number formatting, same whitespace, including names the
 engine has never heard of. They are spliced in rather than re-encoded, because
 re-encoding would reorder keys and round a 64-bit integer through a float.
 If you supplied it, you get it back exactly.
+
+The event carries its **audience at the moment of the transition**, so a
+receiver can decide who to tell without reading the task back:
+
+| Field | Present |
+| --- | --- |
+| `candidates` | The pool after the transition — users, groups and exclusions, exactly as the pool names them. Groups are never expanded into members |
+| `previousAssignee` | Only on a release or a delegation: the holder the transition replaced |
+| `createdBy` | Whenever the task was created by a named actor |
+
+A receiver therefore sees the identifiers in a task's pool. The body already
+carried `actor` and `assignee`; a host that must not disclose pools to a
+particular receiver supplies its own `relay.Sink` or filters at the receiver.
 
 ## Verifying a delivery
 
@@ -466,7 +483,10 @@ them. The schema is not the Redis sink's `hmntsk.event.v1`, because the shape is
 not the same.
 
 The body is the whole event as JSON, exactly what the Redis sink carries in its
-`event` field, including the output, the callback target and the transition.
+`event` field, including the output, the callback target, the transition and
+the audience snapshot (`candidates`, `previousAssignee`, `createdBy`). Neither
+the NATS headers nor the Redis flat fields carry the audience: a pool has no
+size bound, and a header or flat field is a routing hint, not the record.
 
 **Headers are routing hints; the body is authoritative.** A header value cannot
 carry a line break, so the NATS client replaces `\r` and `\n` in one with a
@@ -479,7 +499,7 @@ Route on the headers; read the body when the exact value matters.
 | Failure | Verdict |
 | --- | --- |
 | The event has no identifier, or will not marshal | permanent |
-| The message is larger than the server's `max_payload` | permanent |
+| The message is larger than the server's `max_payload` (1 MB by default; the body grows with the task's candidate pool) | permanent |
 | A subject the client refuses — impossible for a valid prefix and a catalogue event type | permanent |
 | A timeout, a lost or reconnecting connection, a cancelled pass | retryable |
 | `nats: headers not supported by this server` | retryable |

@@ -27,6 +27,7 @@ func runOutboxCases(t *testing.T, factory Factory) {
 	t.Run("scheduling", func(t *testing.T) { outboxScheduling(t, factory) })
 	t.Run("settlement", func(t *testing.T) { outboxSettlement(t, factory) })
 	t.Run("missing events", func(t *testing.T) { outboxMissingEvents(t, factory) })
+	t.Run("audience", func(t *testing.T) { outboxAudience(t, factory) })
 }
 
 // recordEvents stores events the way the engine does: inside the transaction
@@ -125,7 +126,8 @@ func outboxScheduling(t *testing.T, factory Factory) {
 
 		task := Seed(t, h, NewTask(seq.next()))
 
-		recordEvents(t, h,
+		recordEvents(
+			t, h,
 			eventAt(task, "event-newest", Reference),
 			eventAt(task, "event-oldest", Reference.Add(-2*time.Hour)),
 			eventAt(task, "event-middle", Reference.Add(-time.Hour)),
@@ -268,7 +270,8 @@ func outboxSettlement(t *testing.T, factory Factory) {
 			// A pass run after the next-attempt time of every case, so that
 			// "still claimable" and "not claimable any more" are the answer to
 			// the same question.
-			tc.assert(t,
+			tc.assert(
+				t,
 				entryOf(t, h, "event-1"),
 				claimDue(t, h, Reference.Add(10*time.Minute), "relay-2", 10),
 			)
@@ -344,5 +347,37 @@ func outboxMissingEvents(t *testing.T, factory Factory) {
 			require.ErrorAs(t, err, &notFound)
 			assert.Equal(t, "no-such-event", notFound.EventID)
 		})
+	}
+}
+
+// outboxAudience covers the audience snapshot an event carries: whatever a
+// consumer reads back must describe the transition exactly as it was recorded,
+// on every store.
+func outboxAudience(t *testing.T, factory Factory) {
+	t.Helper()
+
+	h := factory(t)
+
+	var seq ids
+
+	task := Seed(t, h, NewTask(seq.next()))
+
+	event := eventAt(task, "event-audience", Reference)
+	event.Type = hmntsk.EventTypeDelegated
+	event.Assignee = OtherActor
+	event.PreviousAssignee = Assignee
+	recordEvents(t, h, event)
+
+	claimed := claimDue(t, h, Reference, "relay-1", 10)
+	require.Len(t, claimed, 1)
+
+	for _, read := range []hmntsk.Event{claimed[0].Event, entryOf(t, h, "event-audience").Event} {
+		assert.Equal(t, hmntsk.CandidatePool{
+			Users:    []string{Assignee, OtherActor},
+			Groups:   []string{"finance-approvers"},
+			Excluded: []string{"mallory"},
+		}, read.Candidates, "the pool round-trips with its users, groups and exclusions")
+		assert.Equal(t, Assignee, read.PreviousAssignee, "the replaced holder round-trips")
+		assert.Equal(t, "system", read.CreatedBy, "the creator round-trips")
 	}
 }

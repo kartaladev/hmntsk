@@ -171,3 +171,60 @@ func TestServiceEngineLedRollbackLeavesNoTraceAtAll(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, history, 1, "only the creation is in history")
 }
+
+// TestServiceEventKeepsItsAudienceAfterTheTaskMovesOn is the redelivery case: a
+// claim event read back after the task has since been delegated still describes
+// the claim, not the task as it now stands.
+func TestServiceEventKeepsItsAudienceAfterTheTaskMovesOn(t *testing.T) {
+	t.Parallel()
+
+	registry := hmntsk.NewRegistry()
+	require.NoError(t, registry.Register(hmntsk.TypeSpec{Name: "freeform"}))
+
+	store := memstore.New()
+
+	var delivered []hmntsk.Event
+
+	svc, err := hmntsk.New(
+		store,
+		hmntsk.WithRegistry(registry),
+		hmntsk.WithGroupResolver(testDirectory()),
+		hmntsk.WithClock(hmntsk.ClockFunc(func() time.Time { return testNow })),
+		hmntsk.WithEventHandlers(hmntsk.EventHandlerFunc(func(_ context.Context, event hmntsk.Event) error {
+			delivered = append(delivered, event)
+
+			return nil
+		})),
+	)
+	require.NoError(t, err)
+
+	pool := hmntsk.CandidatePool{Users: []string{"alice", "bob"}}
+
+	created, err := svc.Create(t.Context(), hmntsk.CreateRequest{
+		Type: "freeform", Actor: "owner", Candidates: &pool,
+	})
+	require.NoError(t, err)
+
+	claimed, err := svc.Claim(t.Context(), hmntsk.TaskRequest{TaskID: created.Task.ID, Actor: "alice"})
+	require.NoError(t, err)
+
+	_, err = svc.Delegate(t.Context(), hmntsk.DelegateRequest{
+		TaskRequest: hmntsk.TaskRequest{TaskID: created.Task.ID, Actor: "alice"},
+		Target:      "bob",
+	})
+	require.NoError(t, err)
+
+	require.Len(t, delivered, 3)
+	assert.Equal(t, "alice", delivered[2].PreviousAssignee, "the delegation names the holder it replaced")
+
+	entry, err := store.OutboxEntry(t.Context(), claimed.Events[0].ID)
+	require.NoError(t, err)
+
+	claim := entry.Event
+	assert.Equal(t, hmntsk.EventTypeClaimed, claim.Type)
+	assert.Equal(t, pool, claim.Candidates)
+	assert.Empty(t, claim.PreviousAssignee, "a claim from the pool replaced nobody")
+	assert.Equal(t, "alice", claim.Assignee, "the claim still names its own holder, not the delegate")
+	assert.Equal(t, "owner", claim.CreatedBy)
+	assert.Equal(t, claim, delivered[1], "what was dispatched is what a redelivery reads")
+}

@@ -93,6 +93,14 @@ func (s *plainSuite) TestPublishesEveryEventWithItsRoutingData() {
 				require.NotNil(t, event.Callback)
 				assert.Equal(t, "https://example.invalid/hooks/tasks", event.Callback.Address)
 				assert.Equal(t, map[string]string{"tenant": "acme"}, event.Correlation.Extra)
+
+				// The audience snapshot travels in the body only; the header set
+				// asserted above is unchanged by it.
+				assert.Equal(t, hmntsk.CandidatePool{
+					Users: []string{"alice", "bob"}, Groups: []string{"finance-approvers"}, Excluded: []string{"mallory"},
+				}, event.Candidates)
+				assert.Equal(t, "carol", event.PreviousAssignee)
+				assert.Equal(t, "owner", event.CreatedBy)
 			},
 		},
 		{
@@ -206,7 +214,8 @@ func (s *plainSuite) TestAnOutageIsRetryableUntilTheServerIsBack() {
 
 	disconnected := make(chan struct{}, 1)
 
-	conn, err := natsgo.Connect("nats://"+proxy.Addr(),
+	conn, err := natsgo.Connect(
+		"nats://"+proxy.Addr(),
 		// A host's connection that loses its server keeps trying rather than
 		// failing, and buffers what it is given in the meantime.
 		natsgo.MaxReconnects(-1),
@@ -237,7 +246,8 @@ func (s *plainSuite) TestAnOutageIsRetryableUntilTheServerIsBack() {
 	messages := subscribe(t, s.conn, prefix+".>")
 
 	// Short, because this attempt is certain to wait out its whole timeout.
-	sink, err := hmntsknats.NewSink(conn,
+	sink, err := hmntsknats.NewSink(
+		conn,
 		hmntsknats.WithSubjectPrefix(prefix),
 		hmntsknats.WithTimeout(200*time.Millisecond),
 	)
@@ -287,7 +297,8 @@ func (s *plainSuite) TestAConnectionThatNeverConnectedIsRetryable() {
 
 	proxy := newBrokerProxy(t, s.conn.ConnectedAddr())
 
-	conn, err := natsgo.Connect("nats://"+proxy.Addr(),
+	conn, err := natsgo.Connect(
+		"nats://"+proxy.Addr(),
 		natsgo.RetryOnFailedConnect(true),
 		natsgo.MaxReconnects(-1),
 		natsgo.ReconnectWait(50*time.Millisecond),
