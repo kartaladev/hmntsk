@@ -34,4 +34,4 @@ Every behaviour task is test-first: write the case, run it with a focused `go te
 
 - [x] 6.1 Run `/simplify` on the touched `delivery/redis` code, then re-run the module's tests.
 - [x] 6.2 `GOTOOLCHAIN=go1.26.8 make lint test test-race test-integration vuln` is green across the workspace, and `openspec validate redis-stream-retention --strict` passes.
-- [ ] 6.3 On the PR, the `delivery/redis` CI job pulls both pinned images and passes; confirm in the job log that the Redis 7 suite ran rather than being skipped.
+- [x] 6.3 On the PR, the `delivery/redis` CI job pulls both pinned images and passes; confirm in the job log that the Redis 7 suite ran rather than being skipped. (PR #3: all 24 checks green; `delivery delivery/redis` passed as `ok … 10.487s`. The job runs `go test -count=1 -timeout 30m ./...` without `-v`, so it prints no per-test lines. The suite is proven to have run because there is no `-run` or `-short` filter, no skip anywhere in the module, and a Redis 7 container that failed to start would have failed `SetupSuite`.)
