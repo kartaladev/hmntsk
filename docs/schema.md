@@ -38,8 +38,10 @@ if err := store.VerifySchema(ctx); err != nil {
 ```
 
 Verification checks that every table and column the engine's statements name is
-present, and that the identifier columns carry the collation that keeps
-comparison case-sensitive. It does not check column types: a dialect has several
+present, that the identifier columns carry the collation that keeps comparison
+case-sensitive, and that every index the engine relies on exists, by name. A
+missing index fails no statement — it makes one read the whole table — so it is
+exactly the kind of drift nothing else reports. It does not check column types: a dialect has several
 spellings for the same storage, a type mismatch that matters shows up as a
 failing statement immediately, and a wrong collation shows up months later as
 the wrong person claiming a task.
@@ -114,6 +116,37 @@ arrays, MySQL JSON columns and SQLite can be indexed portably for that, and a
 child table can be indexed identically on all three. The index that serves it is
 `task_candidates_lookup_idx` on `(kind, value, task_id)`.
 
+A group's queue reuses the same index, with the kind fixed to `group`.
+
+### Indexes for inbox ordering
+
+Each ordering a query can ask for has an index whose leading columns are its key.
+Creation order is the primary key.
+
+| Index | Columns | Serves |
+| --- | --- | --- |
+| `tasks_priority_idx` | `(priority, id)` | Priority order |
+| `tasks_due_order_idx` | `(due_at, id)` | Due-date order |
+| `tasks_urgency_idx` | `(priority, due_at, id)` | Urgency order: priority, then due date, then creation |
+
+`tasks_due_idx` on `(due_at, status)` stays beside `tasks_due_order_idx`. It is
+the escalation sweep's, and the sweep filters on status.
+
+Tasks without a deadline sort last under due-date and urgency order, in both
+directions and on every dialect. The three dialects disagree about where `NULL`
+sorts, so the engine relies on none of them: it orders by an explicit flag,
+`CASE WHEN due_at IS NULL THEN 1 ELSE 0 END`, ahead of `due_at`. The flag is an
+expression, so the index narrows each page's range but does not avoid a sort on
+every dialect. Pages stay fast because they are bounded, at most 500 tasks, and
+the continuation predicate is written out term by term rather than as a
+row-value comparison, which MySQL and SQLite do not use reliably when the
+directions in a key are mixed.
+
+The case to measure is an unfiltered urgency query over millions of open tasks.
+Narrow it by status or by type where you can; the existing indexes serve those
+filters first. Sorting by anything else, a payload field or an arbitrary column,
+is deliberately not offered: it would page inexactly or read the whole table.
+
 ### Why payloads are text columns
 
 `input`, `progress`, `output` and the callback's reference parameters are stored
@@ -123,6 +156,15 @@ number literals. The engine promises a payload comes back exactly as it was
 supplied — field order, number formatting and fields no schema describes
 included — and nothing in the engine ever queries inside a payload, so the
 native types were buying nothing to set against that.
+
+### Task type metadata
+
+`task_types` carries a type's metadata in `metadata`: a JSON object with its
+keys sorted, which is how the engine writes it, so a type read back compares
+equal to the one registered. It is text like every payload column, null when a
+type has none, and nothing filters on it. The engine stores it and never reads
+meaning into it; the well-known keys are conventions for clients, described in
+the inbox guide.
 
 ### Timestamps
 
@@ -203,6 +245,39 @@ off by default and the schema relies on them:
 
 ```
 file:tasks.db?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(10000)
+```
+
+## Upgrading an existing schema
+
+The published statements use `CREATE TABLE IF NOT EXISTS`, which never changes a
+table that is already there. A schema created before the inbox orderings needs
+the `task_types.metadata` column and three ordering indexes added by hand, or
+through your migration tool. Until then `VerifySchema` reports what is missing,
+and every task type read or write fails on the absent column. Put your table
+prefix in front of every table and index name below.
+
+PostgreSQL. Re-applying the published statements creates the indexes, because
+each is its own `CREATE INDEX IF NOT EXISTS`; only the column needs this:
+
+```sql
+ALTER TABLE "task_types" ADD COLUMN IF NOT EXISTS "metadata" text;
+```
+
+MySQL. Its indexes are declared inside `CREATE TABLE`, so they need adding too:
+
+```sql
+ALTER TABLE `task_types` ADD COLUMN `metadata` LONGTEXT NULL;
+ALTER TABLE `tasks`
+    ADD INDEX `tasks_priority_idx` (`priority`, `id`),
+    ADD INDEX `tasks_due_order_idx` (`due_at`, `id`),
+    ADD INDEX `tasks_urgency_idx` (`priority`, `due_at`, `id`);
+```
+
+SQLite. As with PostgreSQL, re-applying the published statements creates the
+indexes:
+
+```sql
+ALTER TABLE "task_types" ADD COLUMN "metadata" TEXT;
 ```
 
 ## Development runner

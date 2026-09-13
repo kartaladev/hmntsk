@@ -69,6 +69,12 @@ type PageResponse struct {
 	NextCursor string `json:"nextCursor,omitempty"`
 }
 
+// CountResponse is how many tasks a query matches.
+type CountResponse struct {
+	// Count is the number of matching tasks, each counted once.
+	Count int64 `json:"count"`
+}
+
 // HistoryResponse is a task's transition log.
 type HistoryResponse struct {
 	// Records are the transitions, oldest first.
@@ -93,6 +99,10 @@ type TaskTypeResponse struct {
 	DefaultPriority int `json:"defaultPriority"`
 	// DefaultDeadlineSeconds is the deadline interval, zero when there is none.
 	DefaultDeadlineSeconds int64 `json:"defaultDeadlineSeconds,omitempty"`
+	// Metadata is the type's metadata, exactly as registered, such as the
+	// well-known hmntsk.formKey and hmntsk.route keys a client links a task to
+	// its business form with.
+	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
 // TaskTypeListResponse is every registered type.
@@ -153,5 +163,6 @@ func taskTypeResponse(spec hmntsk.TypeSpec) TaskTypeResponse {
 		OutputSchema:           spec.OutputSchema,
 		DefaultPriority:        int(spec.DefaultPriority),
 		DefaultDeadlineSeconds: int64(spec.DefaultDeadline / time.Second),
+		Metadata:               spec.Metadata,
 	}
 }

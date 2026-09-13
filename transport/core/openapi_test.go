@@ -110,7 +110,7 @@ func TestOpenAPIDocumentDescribesEveryRoute(t *testing.T) {
 		"the document must describe exactly the routes the table declares, no more")
 
 	for _, schema := range []string{
-		"CreateTaskRequest", "OperationRequest", "Task", "PageResponse",
+		"CreateTaskRequest", "OperationRequest", "Task", "PageResponse", "CountResponse",
 		"HistoryResponse", "TaskTypeResponse", "TaskTypeListResponse", "ErrorResponse",
 	} {
 		assert.Containsf(t, document.Comps.Schemas, schema, "schema %s is missing", schema)

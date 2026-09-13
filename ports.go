@@ -79,6 +79,10 @@ type Repository interface {
 	// Query returns a page of tasks matching a query whose group membership
 	// has already been resolved.
 	Query(ctx context.Context, query ResolvedQuery) (Page, error)
+	// Count returns how many tasks a query matches, counting each task once.
+	// It applies every filter [Repository.Query] applies and ignores the
+	// ordering, the page size and the cursor.
+	Count(ctx context.Context, query ResolvedQuery) (int64, error)
 	// ClaimOverdue takes a time-bounded lease on up to Limit overdue tasks and
 	// returns them. It is the escalation sweep's exclusive-claim mechanism and
 	// must work without row-level locking, because one supported dialect has

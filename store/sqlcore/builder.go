@@ -76,7 +76,7 @@ var outboxColumns = []string{
 var typeColumns = []string{
 	"name", "title", "description", "input_schema", "output_schema",
 	"default_priority", "default_deadline_ms", "default_escalation", "default_assignment",
-	"updated_at",
+	"updated_at", "metadata",
 }
 
 // Statement is SQL and its arguments. Nothing here executes it.
@@ -138,13 +138,26 @@ func (b *Builder) Table(name string) string { return b.dialect.Quote(b.TableName
 // Tables returns every table the engine owns, prefixed and unquoted, in
 // creation order.
 func (b *Builder) Tables() []string {
-	return []string{
-		b.TableName(TasksTable),
-		b.TableName(CandidatesTable),
-		b.TableName(HistoryTable),
-		b.TableName(OutboxTable),
-		b.TableName(TypesTable),
+	tables := make([]string, 0, len(tableOrder))
+	for _, table := range tableOrder {
+		tables = append(tables, b.TableName(table))
 	}
+
+	return tables
+}
+
+// tableOrder is every table the engine owns, unprefixed, in creation order.
+var tableOrder = []string{TasksTable, CandidatesTable, HistoryTable, OutboxTable, TypesTable}
+
+// tableArgs binds every prefixed table name, for an introspection statement's
+// IN list.
+func (b *Builder) tableArgs() []any {
+	tables := make([]any, 0, len(tableOrder))
+	for _, table := range b.Tables() {
+		tables = append(tables, table)
+	}
+
+	return tables
 }
 
 // TaskColumns returns the tasks table's columns in the order [Builder.SelectTask]

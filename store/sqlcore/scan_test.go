@@ -291,6 +291,10 @@ func TestTypeRoundTrip(t *testing.T) {
 			Action: hmntsk.EscalationWiden, AddGroups: []string{"managers"},
 		},
 		DefaultAssignment: hmntsk.CandidatePool{Groups: []string{"finance-approvers"}},
+		Metadata: map[string]string{
+			hmntsk.MetadataFormKey: "approval-form",
+			"acme.icon":            "receipt",
+		},
 	}
 
 	for _, dialect := range sqlcore.Dialects() {
@@ -298,6 +302,9 @@ func TestTypeRoundTrip(t *testing.T) {
 			t.Parallel()
 
 			statement := sqlcore.New(dialect).UpsertType(spec, reference)
+
+			assert.Contains(t, statement.Args, `{"acme.icon":"receipt","hmntsk.formKey":"approval-form"}`,
+				"metadata is stored as canonical JSON with sorted keys, so a type read back compares equal")
 
 			specs, err := sqlcore.ScanTypes(&valueRows{rows: [][]any{statement.Args}})
 			require.NoError(t, err)
@@ -312,6 +319,7 @@ func TestTypeRoundTrip(t *testing.T) {
 			assert.Equal(t, spec.DefaultDeadline, got.DefaultDeadline)
 			assert.Equal(t, spec.DefaultEscalation, got.DefaultEscalation)
 			assert.Equal(t, spec.DefaultAssignment, got.DefaultAssignment)
+			assert.Equal(t, spec.Metadata, got.Metadata, "metadata comes back with exactly the keys supplied")
 			assert.True(t, spec.Equal(got), "a stored type must re-register as identical")
 		})
 	}

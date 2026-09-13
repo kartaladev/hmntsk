@@ -52,7 +52,10 @@ CREATE TABLE IF NOT EXISTS `{{PREFIX}}tasks` (
     KEY `{{PREFIX}}tasks_status_idx` (`status`, `id`),
     KEY `{{PREFIX}}tasks_type_idx` (`task_type`, `id`),
     KEY `{{PREFIX}}tasks_correlation_idx` (`owner_type`, `owner_ref`, `activity_key`),
-    KEY `{{PREFIX}}tasks_due_idx` (`due_at`, `status`)
+    KEY `{{PREFIX}}tasks_due_idx` (`due_at`, `status`),
+    KEY `{{PREFIX}}tasks_priority_idx` (`priority`, `id`),
+    KEY `{{PREFIX}}tasks_due_order_idx` (`due_at`, `id`),
+    KEY `{{PREFIX}}tasks_urgency_idx` (`priority`, `due_at`, `id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `{{PREFIX}}task_candidates` (
@@ -115,5 +118,6 @@ CREATE TABLE IF NOT EXISTS `{{PREFIX}}task_types` (
     `default_escalation`  LONGTEXT NULL,
     `default_assignment`  LONGTEXT NULL,
     `updated_at`          DATETIME(6) NOT NULL,
+    `metadata`            LONGTEXT NULL,
     PRIMARY KEY (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

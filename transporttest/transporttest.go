@@ -81,11 +81,23 @@ const ApprovalOutputSchema = `{
   "required": ["approved"]
 }`
 
-// NewAPI builds the engine and the contract the suite exercises.
+// approvalMetadata is the metadata the suite's approval type is registered
+// with: both well-known keys, and one of the host's own.
+func approvalMetadata() map[string]string {
+	return map[string]string{
+		hmntsk.MetadataFormKey: "approval-form",
+		hmntsk.MetadataRoute:   "/approvals/{correlation.ownerRef}?task={task.id}",
+		"acme.icon":            "receipt",
+	}
+}
+
+// NewAPI builds the engine and the contract the suite exercises, configured by
+// opts. With no options the contract's defaults apply, the self-only query
+// policy included.
 //
 // It is exported so that a binding's own tests can wire the same engine when
 // they need to check something outside the shared cases.
-func NewAPI(t *testing.T) *transportcore.API {
+func NewAPI(t *testing.T, opts ...transportcore.Option) *transportcore.API {
 	t.Helper()
 
 	registry := hmntsk.NewRegistry()
@@ -101,6 +113,7 @@ func NewAPI(t *testing.T) *transportcore.API {
 		DefaultEscalation: &hmntsk.EscalationPolicy{
 			Action: hmntsk.EscalationWiden, AddGroups: []string{"managers"},
 		},
+		Metadata: approvalMetadata(),
 	}))
 
 	require.NoError(t, registry.Register(hmntsk.TypeSpec{Name: "note", Title: "Note"}))
@@ -114,7 +127,7 @@ func NewAPI(t *testing.T) *transportcore.API {
 	)
 	require.NoError(t, err)
 
-	api, err := transportcore.New(svc)
+	api, err := transportcore.New(svc, opts...)
 	require.NoError(t, err)
 
 	return api

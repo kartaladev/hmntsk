@@ -1,7 +1,12 @@
 package sqlcore
 
 import (
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/kartaladev/hmntsk"
 )
@@ -20,27 +25,304 @@ var workingStatuses = []hmntsk.Status{
 // Eligibility is expressed as an EXISTS over the candidate child table rather
 // than by unpacking an array or a JSON column, which is what lets every dialect
 // serve it from the same index.
-func (b *Builder) QueryTasks(query hmntsk.ResolvedQuery) Statement {
+//
+// The ordering is the query's [hmntsk.Ordering], and a cursor continues it with
+// a keyset over the ordering's whole key. It is refused with a validation error
+// when it cannot continue this query: an unsupported ordering, a cursor this
+// builder did not issue, or one issued for another ordering or direction.
+func (b *Builder) QueryTasks(query hmntsk.ResolvedQuery) (Statement, error) {
+	if !query.OrderBy.Valid() {
+		return Statement{}, invalidQuery(fmt.Sprintf("ordering %q is not supported", string(query.OrderBy)))
+	}
+
+	var after *cursorKey
+
+	if query.Cursor != "" {
+		key, err := decodeCursor(query.Query)
+		if err != nil {
+			return Statement{}, err
+		}
+
+		after = &key
+	}
+
 	s := b.begin()
 
 	tasks := b.dialect.Quote("t")
 	s.write("SELECT ", b.quoteList(tasks, taskColumns))
 	s.write(" FROM ", b.Table(TasksTable), " AS ", tasks)
 
+	// The keyset predicate goes last, after every filter has bound its
+	// arguments, so its placeholders follow theirs in the statement text.
 	conditions := b.queryConditions(s, query)
+	if after != nil {
+		conditions = append(conditions, b.keysetCondition(s, query.Query, *after))
+	}
+
 	if len(conditions) > 0 {
 		s.write(" WHERE ", strings.Join(conditions, " AND "))
 	}
 
-	order := " ASC"
-	if query.Descending {
-		order = " DESC"
-	}
-
-	s.write(" ORDER BY ", tasks, ".", b.dialect.Quote("id"), order)
+	s.write(" ORDER BY ", b.orderBy(query.Query))
 	s.write(" LIMIT ", s.bind(int64(query.EffectiveLimit()+1)))
 
+	return s.done(), nil
+}
+
+// CountTasks renders the count of the tasks a query matches.
+//
+// It applies exactly the filters [Builder.QueryTasks] applies and ignores the
+// ordering, the page size and the cursor. A plain COUNT(*) counts each task
+// once: the statement reads the tasks table alone, and every candidate and
+// group filter is an EXISTS, which matches a task once however many of its
+// candidate rows reach the actor.
+func (b *Builder) CountTasks(query hmntsk.ResolvedQuery) Statement {
+	s := b.begin()
+
+	tasks := b.dialect.Quote("t")
+	s.write("SELECT COUNT(*)")
+	s.write(" FROM ", b.Table(TasksTable), " AS ", tasks)
+
+	if conditions := b.queryConditions(s, query); len(conditions) > 0 {
+		s.write(" WHERE ", strings.Join(conditions, " AND "))
+	}
+
 	return s.done()
+}
+
+// ScanCount reads the single value a [Builder.CountTasks] statement returns.
+// Drivers differ in the integer type they hand back, so any of them is read.
+func ScanCount(rows Rows) (int64, error) {
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return 0, fmt.Errorf("hmntsk: read the task count: %w", err)
+		}
+
+		return 0, errors.New("hmntsk: the task count returned no row")
+	}
+
+	var value any
+
+	if err := rows.Scan(&value); err != nil {
+		return 0, fmt.Errorf("hmntsk: scan the task count: %w", err)
+	}
+
+	return DecodeInt(value)
+}
+
+// NextCursor renders the token that continues a query after the last task of
+// its page. It is bound to the query's ordering and direction.
+func (b *Builder) NextCursor(query hmntsk.Query, last hmntsk.Task) string {
+	encoded, err := json.Marshal(cursor{
+		Ordering:   query.OrderBy,
+		Descending: query.Descending,
+		After:      cursorKey{Priority: last.Priority, DueAt: last.DueAt, ID: last.ID},
+	})
+	if err != nil {
+		// Every field is a string, an integer or a time: there is nothing here
+		// that can fail to marshal.
+		panic("sqlcore: encode a cursor: " + err.Error())
+	}
+
+	return base64.RawURLEncoding.EncodeToString(encoded)
+}
+
+// cursor is a continuation token: the ordering and direction that produced it,
+// and the key of the last task returned. It is base64url JSON, which keeps it
+// opaque to callers and safe in a URL.
+type cursor struct {
+	Ordering   hmntsk.Ordering `json:"o"`
+	Descending bool            `json:"d"`
+	After      cursorKey       `json:"k"`
+}
+
+// cursorKey is every value an ordering's key reads. Which of them a given
+// ordering compares is decided by [orderingKey].
+type cursorKey struct {
+	Priority hmntsk.Priority `json:"p"`
+	DueAt    *time.Time      `json:"t,omitempty"`
+	ID       hmntsk.TaskID   `json:"i"`
+}
+
+// decodeCursor reads a query's continuation token, refusing one this builder
+// did not issue or one issued for another ordering or direction: reading it
+// anyway would page through the wrong sequence without saying so.
+func decodeCursor(query hmntsk.Query) (cursorKey, error) {
+	var decoded cursor
+
+	raw, err := base64.RawURLEncoding.DecodeString(query.Cursor)
+	if err == nil {
+		err = json.Unmarshal(raw, &decoded)
+	}
+
+	switch {
+	case err != nil || decoded.After.ID == "":
+		return cursorKey{}, invalidQuery("the cursor is not valid: it was not issued by this store")
+	case decoded.Ordering != query.OrderBy || decoded.Descending != query.Descending:
+		return cursorKey{}, invalidQuery("the cursor is not valid: it continues a different ordering or direction")
+	default:
+		return decoded.After, nil
+	}
+}
+
+// invalidQuery reports a query no statement can be rendered for.
+func invalidQuery(detail string) error {
+	return &hmntsk.ValidationError{Subject: "request", Issues: []hmntsk.ValidationIssue{{Detail: detail}}}
+}
+
+// keyTerm is one term of an ordering's key.
+type keyTerm int
+
+const (
+	termPriority keyTerm = iota
+	// termNoDeadline is 1 for a task without a deadline and 0 otherwise. It
+	// always sorts ascending, so tasks without a deadline come last in both
+	// directions and on every dialect, whatever that dialect's own opinion of
+	// where NULL sorts.
+	termNoDeadline
+	termDue
+	termID
+)
+
+// orderingKey lists the terms an ordering sorts by. Every key ends with the
+// task identifier, which is what makes each ordering total.
+func orderingKey(ordering hmntsk.Ordering) []keyTerm {
+	switch ordering {
+	case hmntsk.OrderPriority:
+		return []keyTerm{termPriority, termID}
+	case hmntsk.OrderDue:
+		return []keyTerm{termNoDeadline, termDue, termID}
+	case hmntsk.OrderUrgency:
+		return []keyTerm{termPriority, termNoDeadline, termDue, termID}
+	default:
+		return []keyTerm{termID}
+	}
+}
+
+// taskColumn renders a column of the query's tasks alias.
+func (b *Builder) taskColumn(column string) string {
+	return b.dialect.Quote("t") + "." + b.dialect.Quote(column)
+}
+
+// termColumn names the column a key term compares. The no-deadline flag reads
+// the due date.
+func (b *Builder) termColumn(term keyTerm) string {
+	switch term {
+	case termPriority:
+		return b.taskColumn("priority")
+	case termNoDeadline, termDue:
+		return b.taskColumn("due_at")
+	default:
+		return b.taskColumn("id")
+	}
+}
+
+// orderBy renders the ORDER BY terms of a query's ordering.
+func (b *Builder) orderBy(query hmntsk.Query) string {
+	direction := " ASC"
+	if query.Descending {
+		direction = " DESC"
+	}
+
+	terms := orderingKey(query.OrderBy)
+	parts := make([]string, 0, len(terms))
+
+	for _, term := range terms {
+		if term == termNoDeadline {
+			parts = append(parts, "CASE WHEN "+b.termColumn(term)+" IS NULL THEN 1 ELSE 0 END ASC")
+
+			continue
+		}
+
+		parts = append(parts, b.termColumn(term)+direction)
+	}
+
+	return strings.Join(parts, ", ")
+}
+
+// keysetCondition renders "strictly after this key" under a query's ordering.
+//
+// It is the expanded disjunction (a > ?) OR (a = ? AND b > ?) OR ..., never a
+// row-value comparison, because MySQL and SQLite do not use one reliably when
+// the key's directions are mixed — and the no-deadline flag makes them mixed.
+// The flag is never bound: whether the last task had a deadline is known here,
+// so it renders as IS NULL or IS NOT NULL, and a disjunct that could match
+// nothing, such as "a deadline later than none", is left out.
+func (b *Builder) keysetCondition(s *stmt, query hmntsk.Query, after cursorKey) string {
+	strictly := " > "
+	if query.Descending {
+		strictly = " < "
+	}
+
+	terms := orderingKey(query.OrderBy)
+	disjuncts := make([]string, 0, len(terms))
+
+	for i, term := range terms {
+		if (term == termNoDeadline || term == termDue) && after.DueAt == nil {
+			continue
+		}
+
+		parts := make([]string, 0, i+1)
+
+		for _, previous := range terms[:i] {
+			if equal := b.keyEqual(s, previous, after); equal != "" {
+				parts = append(parts, equal)
+			}
+		}
+
+		parts = append(parts, b.keyBeyond(s, term, after, strictly))
+		disjuncts = append(disjuncts, "("+strings.Join(parts, " AND ")+")")
+	}
+
+	if len(disjuncts) == 1 {
+		return disjuncts[0]
+	}
+
+	return "(" + strings.Join(disjuncts, " OR ") + ")"
+}
+
+// keyEqual renders "this term equals the last task's". It is empty for a due
+// date the last task did not have, because the no-deadline flag before it
+// already says so.
+func (b *Builder) keyEqual(s *stmt, term keyTerm, after cursorKey) string {
+	column := b.termColumn(term)
+
+	switch term {
+	case termPriority:
+		return column + " = " + s.bind(int64(after.Priority))
+	case termNoDeadline:
+		if after.DueAt == nil {
+			return column + " IS NULL"
+		}
+
+		return column + " IS NOT NULL"
+	case termDue:
+		if after.DueAt == nil {
+			return ""
+		}
+
+		return column + " = " + s.bind(b.encodeTime(after.DueAt))
+	default:
+		return column + " = " + s.bind(string(after.ID))
+	}
+}
+
+// keyBeyond renders "this term is strictly after the last task's". The
+// no-deadline flag sorts ascending whatever the direction, so the only thing
+// after a task with a deadline is a task without one.
+func (b *Builder) keyBeyond(s *stmt, term keyTerm, after cursorKey, strictly string) string {
+	column := b.termColumn(term)
+
+	switch term {
+	case termPriority:
+		return column + strictly + s.bind(int64(after.Priority))
+	case termNoDeadline:
+		return column + " IS NULL"
+	case termDue:
+		return column + strictly + s.bind(b.encodeTime(after.DueAt))
+	default:
+		return column + strictly + s.bind(string(after.ID))
+	}
 }
 
 // queryConditions renders every filter the query names.
@@ -97,14 +379,18 @@ func (b *Builder) queryConditions(s *stmt, query hmntsk.ResolvedQuery) []string 
 			alias+b.dialect.Quote("due_at")+" < "+s.bind(b.encodeTime(query.DueBefore)))
 	}
 
-	if query.Cursor != "" {
-		comparison := " > "
-		if query.Descending {
-			comparison = " < "
-		}
+	// A group's queue is the pool as configured: no membership is resolved and
+	// no exclusion applies, because a queue has no actor to apply one to. It is
+	// served by the candidate lookup index, whose leading columns are the kind
+	// and the value.
+	if query.Group != "" {
+		groups := b.dialect.Quote("g")
 
 		conditions = append(conditions,
-			alias+b.dialect.Quote("id")+comparison+s.bind(query.Cursor))
+			"EXISTS (SELECT 1 FROM "+b.Table(CandidatesTable)+" AS "+groups+
+				" WHERE "+groups+"."+b.dialect.Quote("task_id")+" = "+alias+b.dialect.Quote("id")+
+				" AND "+groups+"."+b.dialect.Quote("kind")+" = "+s.bind(string(CandidateGroup))+
+				" AND "+groups+"."+b.dialect.Quote("value")+" = "+s.bind(query.Group)+")")
 	}
 
 	if candidate := b.candidateCondition(s, query); candidate != "" {

@@ -32,6 +32,9 @@ svc, err := hmntsk.New(store, hmntsk.WithGroupResolver(directory))
 - **Candidate pools** of users, groups and exclusions, with membership resolved
   through your directory at the moment of the operation, not snapshotted when
   the task was created.
+- **A contextual inbox** from plain queries: priority, due-date and urgency
+  ordering with exact paging, counts for badges, team queues, and type metadata
+  that links a task to its business form.
 - **Events, not calls.** The engine publishes; it never invokes host business
   logic. Events are written to an outbox inside your transaction and dispatched
   after it commits.
@@ -231,6 +234,25 @@ lease taken with a conditional update, so two instances sweeping at once
 escalate each task exactly once — and so that it works identically on a database
 with no row-level locking at all.
 
+## Inbox
+
+A bucket is a query you name. Order it, count it, and link its tasks to where
+the work is done:
+
+```go
+page, err := svc.Query(ctx, hmntsk.Query{Candidate: actor, OrderBy: hmntsk.OrderUrgency})
+counts, err := svc.CountBuckets(ctx, map[string]hmntsk.Query{
+    "mine": {Assignee: actor},
+    "team": {Group: "finance-approvers"},
+})
+link := hmntsk.ExpandRoute(spec.Metadata[hmntsk.MetadataRoute], task)   // raw: escape it yourself
+```
+
+Creation order is the default and paging is exact under every ordering; tasks
+without a deadline sort last. See [docs/inbox.md](docs/inbox.md) for buckets,
+orderings and their limits, counts, team queues, metadata keys and query
+authorization.
+
 ## HTTP
 
 ```go
@@ -250,8 +272,22 @@ established:
 ctx := httptransport.ContextWithActor(r.Context(), whoeverYouAuthenticated)
 ```
 
+Inbox queries and counts (`GET /tasks`, `GET /tasks/count`) are **self-only by
+default**: `candidate=me` and `assignee=me` name that actor, and a query for
+anyone else's inbox, a group's queue, or nobody in particular is `403`. Replace
+the policy for supervisors, admins or your own permission system:
+
+```go
+api, err := transportcore.New(svc, transportcore.WithQueryAuthorizer(yourPolicy))  // or transportcore.AllowAll
+```
+
+**Unreleased breaking changes:** a client that queried another actor's inbox now
+needs a policy that permits it, and the direction parameter is now
+`direction=asc|desc` beside `orderBy`, replacing `order`.
+
 Errors map predictably: `409` for a concurrent-modification conflict and for an
-illegal transition, `403` for a failed eligibility or assignee check, `404` for
+illegal transition, `403` for a failed eligibility or assignee check or a
+refused query, `404` for
 an unknown task or route, `400` for a schema or request validation failure and
 for an unregistered task type. A failure to reach your directory is a `500` and
 never a `403` — the engine could not decide, which is not the same as deciding
@@ -272,6 +308,7 @@ per-dialect workflow.
 
 ## Documentation
 
+- [docs/inbox.md](docs/inbox.md) — buckets, ordering, counts, team queues, metadata, query authorization
 - [docs/schema.md](docs/schema.md) — tables, prefix, migration workflow
 - [docs/releasing.md](docs/releasing.md) — module tagging scheme and release order
 - Runnable examples: `Example`, `Example_hostLedTransaction`, `Example_typedFacade`

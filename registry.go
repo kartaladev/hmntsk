@@ -45,6 +45,16 @@ type TypeSpec struct {
 	// DefaultAssignment is the candidate pool a task of this type carries when
 	// the caller supplies none.
 	DefaultAssignment CandidatePool `json:"defaultAssignment,omitzero"`
+	// Metadata is data the host attaches to the type, such as how a client
+	// links a task of this type to its business form. The engine stores it and
+	// returns it unchanged, and never interprets it: it is not copied onto
+	// tasks and cannot be filtered on. It takes part in [TypeSpec.Equal], so
+	// re-registering a type with different metadata is a conflict.
+	//
+	// Keys under the "hmntsk." prefix are reserved for the library's documented
+	// conventions, [MetadataFormKey] and [MetadataRoute]. Every other key
+	// belongs to the host. The default is no metadata.
+	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
 // Clone returns a deep copy.
@@ -54,6 +64,7 @@ func (s TypeSpec) Clone() TypeSpec {
 	out.OutputSchema = cloneRaw(s.OutputSchema)
 	out.DefaultEscalation = s.DefaultEscalation.Clone()
 	out.DefaultAssignment = s.DefaultAssignment.Clone()
+	out.Metadata = maps.Clone(s.Metadata)
 
 	return out
 }
@@ -68,7 +79,9 @@ func (s TypeSpec) Equal(other TypeSpec) bool {
 		s.DefaultPriority != other.DefaultPriority ||
 		s.DefaultDeadline != other.DefaultDeadline ||
 		!s.DefaultEscalation.Equal(other.DefaultEscalation) ||
-		!s.DefaultAssignment.Equal(other.DefaultAssignment) {
+		!s.DefaultAssignment.Equal(other.DefaultAssignment) ||
+		// No metadata and empty metadata compare equal: neither says anything.
+		!maps.Equal(s.Metadata, other.Metadata) {
 		return false
 	}
 

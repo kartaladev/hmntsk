@@ -35,6 +35,21 @@ func runTaskTypeCases(t *testing.T, mount Mount) {
 		assert.Equal(t, int64(3600), spec.DefaultDeadlineSeconds)
 	})
 
+	t.Run("a client can link a task to its business form", func(t *testing.T) {
+		client, _ := NewClient(t, mount)
+
+		result := client.Do(t, http.MethodGet, "/task-types/approval", Alice, nil)
+		require.Equalf(t, transportcore.StatusOK, result.Status, "%s", result.Body)
+
+		var spec struct {
+			Metadata map[string]string `json:"metadata"`
+		}
+
+		result.Decode(t, &spec)
+		assert.Equal(t, approvalMetadata(), spec.Metadata,
+			"metadata comes back exactly as registered, host keys beside the well-known ones")
+	})
+
 	t.Run("every registered type is listed", func(t *testing.T) {
 		client, _ := NewClient(t, mount)
 
