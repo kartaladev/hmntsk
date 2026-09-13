@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/kartaladev/hmntsk"
+	"github.com/kartaladev/hmntsk/sqlkit"
 )
 
 // Table names, before the host's prefix is applied.
@@ -79,18 +80,10 @@ var typeColumns = []string{
 	"updated_at", "metadata",
 }
 
-// Statement is SQL and its arguments. Nothing here executes it.
-type Statement struct {
-	// SQL is the statement text, with the dialect's placeholder style already
-	// applied.
-	SQL string
-	// Args are the bind values, in placeholder order.
-	Args []any
-}
-
-// IsZero reports whether the statement is empty, which builders return when
-// there is nothing to do — inserting an empty candidate pool, for instance.
-func (s Statement) IsZero() bool { return s.SQL == "" }
+// Statement is SQL and its arguments. Nothing here executes it. It is
+// [sqlkit.Statement]; a builder returns the zero statement when there is nothing
+// to do — inserting an empty candidate pool, for instance.
+type Statement = sqlkit.Statement
 
 // Builder produces the engine's statements for one dialect and one table
 // prefix.
@@ -149,17 +142,6 @@ func (b *Builder) Tables() []string {
 // tableOrder is every table the engine owns, unprefixed, in creation order.
 var tableOrder = []string{TasksTable, CandidatesTable, HistoryTable, OutboxTable, TypesTable}
 
-// tableArgs binds every prefixed table name, for an introspection statement's
-// IN list.
-func (b *Builder) tableArgs() []any {
-	tables := make([]any, 0, len(tableOrder))
-	for _, table := range b.Tables() {
-		tables = append(tables, table)
-	}
-
-	return tables
-}
-
 // TaskColumns returns the tasks table's columns in the order [Builder.SelectTask]
 // reads them, which is the order a [TaskScanner] expects.
 func (b *Builder) TaskColumns() []string { return append([]string(nil), taskColumns...) }
@@ -173,45 +155,27 @@ func (b *Builder) HistoryColumns() []string { return append([]string(nil), histo
 func (b *Builder) OutboxColumns() []string { return append([]string(nil), outboxColumns...) }
 
 // stmt accumulates SQL and its arguments, handing out placeholders in the
-// dialect's style as it goes.
+// dialect's style as it goes. It is a [sqlkit.Writer] under the short names the
+// statement builders in this package use.
 type stmt struct {
-	builder *Builder
-	sql     strings.Builder
-	args    []any
+	writer *sqlkit.Writer
 }
 
 // begin starts a statement.
-func (b *Builder) begin() *stmt { return &stmt{builder: b} }
+func (b *Builder) begin() *stmt { return &stmt{writer: sqlkit.NewWriter(b.dialect)} }
 
 // write appends literal SQL.
-func (s *stmt) write(parts ...string) {
-	for _, part := range parts {
-		s.sql.WriteString(part)
-	}
-}
+func (s *stmt) write(parts ...string) { s.writer.Write(parts...) }
 
 // bind appends an argument and returns its placeholder.
-func (s *stmt) bind(value any) string {
-	s.args = append(s.args, value)
-
-	return s.builder.dialect.Placeholder(len(s.args))
-}
+func (s *stmt) bind(value any) string { return s.writer.Bind(value) }
 
 // bindAll appends several arguments and returns their placeholders, comma
 // separated.
-func (s *stmt) bindAll(values ...any) string {
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		out = append(out, s.bind(value))
-	}
-
-	return strings.Join(out, ", ")
-}
+func (s *stmt) bindAll(values ...any) string { return s.writer.BindAll(values...) }
 
 // done renders the accumulated statement.
-func (s *stmt) done() Statement {
-	return Statement{SQL: s.sql.String(), Args: s.args}
-}
+func (s *stmt) done() Statement { return s.writer.Done() }
 
 // quoteList renders a column list, quoted and comma separated, optionally
 // prefixed with an already-quoted table alias.
