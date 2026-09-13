@@ -112,4 +112,4 @@ Per `.claude/rules/library-design.md`, each group tests **the default** and **at
 
 - [x] 8.1 Run `/simplify` on the touched code (core, memstore, sqlcore, the three adapters, `transport/core`, `storetest`, `transporttest`), then re-run their tests with `-race`.
 - [x] 8.2 Run `GOTOOLCHAIN=go1.26.8 make lint test test-race test-integration vuln store-matrix relay-matrix`, green across the workspace. Run `openspec validate contextual-task-inbox --strict`, which must pass.
-- [ ] 8.3 On the PR, every existing CI check passes, including the store and transport matrices.
+- [x] 8.3 On the PR, every existing CI check passes, including the store and transport matrices.
