@@ -54,8 +54,58 @@ why the error lists everything rather than failing on first use.
 | `tasks` | One row per task. Every filterable value is a column of its own |
 | `task_candidates` | Candidate users, candidate groups and exclusions, one row each |
 | `task_history` | One row per accepted lifecycle transition. Append-only |
-| `task_outbox` | The durable event record, written in the same transaction as the change |
+| `task_outbox` | The durable event record, written in the same transaction as the change, plus the relay's delivery state for it |
 | `task_types` | Registered task types, for hosts and inboxes that are not written in Go |
+
+### The outbox carries its own delivery state
+
+`task_outbox` holds the event — `id`, `task_id`, `task_type`, `event_type`,
+`occurred_at`, `payload` — and, beside it, six columns the relay reads and
+writes as it delivers:
+
+| Column | What it is |
+| --- | --- |
+| `attempts` | How many delivery attempts have been made |
+| `next_attempt_at` | When the event becomes due again. Null once it is dead-lettered |
+| `last_error` | What the most recent failure was, for whoever asks why an event never arrived |
+| `locked_by` | The relay currently holding the delivery lease |
+| `locked_until` | When that lease expires |
+| `accepted_sinks` | The sinks that have already taken the event, as a JSON array of names |
+
+A row is born due: `InsertOutbox` writes `attempts` 0 and `next_attempt_at`
+equal to `occurred_at`, so an event is deliverable the moment its transaction
+commits.
+
+There is no `dead_lettered_at`. The three conditions an event can be in are
+distinguished by the two nullable timestamps that have to exist anyway:
+
+| | `published_at` | `next_attempt_at` |
+| --- | --- | --- |
+| delivered | set | — |
+| pending | null | set |
+| dead-lettered | null | null |
+
+A dead letter is the row that will never be attempted again and never was
+delivered, which is exactly what "no next attempt, never published" says. A
+marker column of its own would add a fourth state the other three could
+contradict: a row both dead-lettered and due is representable with one and
+unrepresentable without it.
+
+`accepted_sinks` exists because a single `published_at` is only correct for a
+single destination. With two, a webhook success followed by a broker outage
+would either re-POST to the webhook on every retry or mark the event delivered
+with the broker never having seen it. A retry targets only the sinks absent from
+this list, and `published_at` is set only once every configured sink appears in
+it.
+
+Renaming a sink therefore re-delivers every event that sink has already taken,
+because the name is what was written. Sink names are part of the schema's
+meaning, not a label.
+
+Two indexes serve the table. `task_outbox_unpublished_idx` on `(published_at,
+occurred_at, id)` serves reading the undelivered record; `task_outbox_due_idx`
+on `(published_at, next_attempt_at, occurred_at, id)` serves the relay's claim,
+which filters on due-ness and lease state and drains oldest first.
 
 ### Why candidates are a child table
 

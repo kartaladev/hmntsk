@@ -45,7 +45,7 @@ jobs:
       - name: Core, sqlcore and contract tests
         run: |
           set -e
-          for module in . store/sqlcore transport/core storetest transporttest; do
+          for module in . store/sqlcore transport/core storetest transporttest relaytest; do
             echo "==> $module"
             (cd "$module" && go test -count=1 ./...)
           done
@@ -78,6 +78,53 @@ jobs:
       - name: Conformance suite
         working-directory: ${{ matrix.module }}
         run: go test -count=1 -timeout 30m -run "^${{ matrix.run }}$" ./...
+
+  # Claiming, retry scheduling and dead-lettering are storage behaviour, so the
+  # relay suite runs on every combination the store suite does. A lease that
+  # works on PostgreSQL and not on SQLite is exactly the bug this catches.
+  relay-matrix:
+    name: relay ${{ matrix.module }} / ${{ matrix.dialect }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { module: store/sql, dialect: postgres, run: TestRelayOnPostgres }
+          - { module: store/sql, dialect: mysql, run: TestRelayOnMySQL }
+          - { module: store/sql, dialect: sqlite, run: TestRelayOnSQLite }
+          - { module: store/pgx, dialect: postgres, run: TestRelayOnPostgres }
+          - { module: store/gorm, dialect: postgres, run: TestRelayOnPostgres }
+          - { module: store/gorm, dialect: mysql, run: TestRelayOnMySQL }
+          - { module: store/gorm, dialect: sqlite, run: TestRelayOnSQLite }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: "**/go.sum"
+      - name: Relay conformance suite
+        working-directory: ${{ matrix.module }}
+        run: go test -count=1 -timeout 30m -run "^${{ matrix.run }}$" ./...
+
+  # The two sinks. The webhook sink needs only an HTTP test server; the Redis
+  # sink starts a broker through testcontainers, against the runner's own Docker
+  # daemon, in the same way the store suite starts its databases.
+  delivery:
+    name: delivery ${{ matrix.module }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [delivery/webhook, delivery/redis]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: "**/go.sum"
+      - name: Sink tests
+        working-directory: ${{ matrix.module }}
+        run: go test -count=1 -timeout 30m ./...
 
   # The same contract, once per framework binding.
   transport-matrix:

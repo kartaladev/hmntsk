@@ -2,6 +2,9 @@ go 1.26.0
 
 use (
 	.
+	./delivery/redis
+	./delivery/webhook
+	./relaytest
 	./store/gorm
 	./store/pgx
 	./store/sql

@@ -1,12 +1,14 @@
 MODULES := . store/sqlcore store/sql store/pgx store/gorm \
            transport/core transport/http transport/gin transport/fiber \
-           storetest transporttest
+           delivery/webhook delivery/redis \
+           storetest transporttest relaytest
 
 # RELEASE_ORDER is the order the modules must be tagged in: a module can only
 # be released once everything it depends on has a version to require. The list
 # is documented in docs/releasing.md, and a test asserts that the two agree.
-RELEASE_ORDER := . store/sqlcore storetest transport/core transporttest \
+RELEASE_ORDER := . store/sqlcore storetest relaytest transport/core transporttest \
                  store/sql store/pgx store/gorm \
+                 delivery/webhook delivery/redis \
                  transport/http transport/gin transport/fiber
 
 GO ?= go
@@ -24,7 +26,7 @@ GOTOOLCHAIN ?= go1.26.8
 export GOTOOLCHAIN
 
 .PHONY: all build lint fmt test test-integration test-race tidy vuln generate \
-        store-matrix transport-matrix release-order clean
+        store-matrix relay-matrix transport-matrix release-order clean
 
 all: lint test
 
@@ -98,6 +100,14 @@ STORE_MATRIX := store/sql:TestStoreOnPostgres store/sql:TestStoreOnMySQL store/s
                 store/pgx:TestStoreOnPostgres \
                 store/gorm:TestStoreOnPostgres store/gorm:TestStoreOnMySQL store/gorm:TestStoreOnSQLite
 
+# RELAY_MATRIX is the same seven driver-by-dialect combinations as
+# STORE_MATRIX, running the relay conformance suite instead. Claiming, retry
+# scheduling and dead-lettering are storage behaviour, so they have to be proven
+# on every dialect and not only on the one that is cheapest to run.
+RELAY_MATRIX := store/sql:TestRelayOnPostgres store/sql:TestRelayOnMySQL store/sql:TestRelayOnSQLite \
+                store/pgx:TestRelayOnPostgres \
+                store/gorm:TestRelayOnPostgres store/gorm:TestRelayOnMySQL store/gorm:TestRelayOnSQLite
+
 # TRANSPORT_MATRIX is the three framework bindings, each running the shared
 # transport suite.
 TRANSPORT_MATRIX := transport/http transport/gin transport/fiber
@@ -105,6 +115,14 @@ TRANSPORT_MATRIX := transport/http transport/gin transport/fiber
 ## store-matrix: run the storage conformance suite over all seven combinations.
 store-matrix:
 	@set -e; for entry in $(STORE_MATRIX); do \
+		m=$${entry%%:*}; run=$${entry##*:}; \
+		echo "==> $$m $$run"; \
+		(cd $$m && $(GO) test -count=1 -timeout 30m -run "^$$run$$" ./...); \
+	done
+
+## relay-matrix: run the relay conformance suite over all seven combinations.
+relay-matrix:
+	@set -e; for entry in $(RELAY_MATRIX); do \
 		m=$${entry%%:*}; run=$${entry##*:}; \
 		echo "==> $$m $$run"; \
 		(cd $$m && $(GO) test -count=1 -timeout 30m -run "^$$run$$" ./...); \
