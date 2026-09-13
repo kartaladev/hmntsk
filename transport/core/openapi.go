@@ -76,11 +76,11 @@ var responseShapes = map[string]responseShape{
 	},
 	"getTask": {
 		success: StatusOK, successSchema: "Task",
-		failures: []int{StatusNotFound},
+		failures: []int{StatusForbidden, StatusNotFound, StatusInternalServerError},
 	},
 	"getTaskHistory": {
 		success: StatusOK, successSchema: "HistoryResponse",
-		failures: []int{StatusNotFound},
+		failures: []int{StatusForbidden, StatusNotFound, StatusInternalServerError},
 	},
 	"listTaskTypes": {success: StatusOK, successSchema: "TaskTypeListResponse"},
 	"getTaskType": {
@@ -104,7 +104,7 @@ var statusDescriptions = map[int]string{
 	StatusOK:                  "The operation succeeded.",
 	StatusCreated:             "The task was created.",
 	StatusBadRequest:          "The request or its payload failed validation, or named a task type that is not registered.",
-	StatusForbidden:           "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox.",
+	StatusForbidden:           "The acting actor is not eligible for the task or is not its assignee, the query authorization policy refused the query, or the read authorization policy refused the read. By default an actor may query only their own inbox, and may read only tasks they hold, are eligible for, or created. A read with no acting user is always refused.",
 	StatusNotFound:            "No such task, task type or route.",
 	StatusConflict:            "The task has moved on since the version the caller observed, or the operation is not legal from its present state. The body carries the current version.",
 	StatusInternalServerError: "The request could not be completed. A failure to resolve group membership lands here rather than on 403: the engine could not decide, which is not the same as deciding against the caller.",

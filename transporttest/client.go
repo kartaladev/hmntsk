@@ -29,6 +29,14 @@ func NewClient(t *testing.T, mount Mount, opts ...transportcore.Option) (*Client
 	t.Helper()
 
 	api := NewAPI(t, opts...)
+
+	return clientFor(t, mount, api), api
+}
+
+// clientFor mounts an API the caller built and returns a client for it.
+func clientFor(t *testing.T, mount Mount, api *transportcore.API) *Client {
+	t.Helper()
+
 	binding := mount(t, api)
 
 	require.NotEmpty(t, binding.BaseURL, "a binding must say where it is reachable")
@@ -37,7 +45,7 @@ func NewClient(t *testing.T, mount Mount, opts ...transportcore.Option) (*Client
 		baseURL:  binding.BaseURL,
 		basePath: api.BasePath(),
 		http:     &http.Client{Timeout: 30 * time.Second},
-	}, api
+	}
 }
 
 // Result is one HTTP answer.

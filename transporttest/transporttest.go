@@ -100,6 +100,22 @@ func approvalMetadata() map[string]string {
 func NewAPI(t *testing.T, opts ...transportcore.Option) *transportcore.API {
 	t.Helper()
 
+	return newAPI(t, suiteDirectory(), opts...)
+}
+
+// suiteDirectory is the group membership every case runs against.
+func suiteDirectory() *hmntsk.StaticAssignment {
+	return hmntsk.NewStaticAssignment(map[string][]string{
+		"finance-approvers": {Alice, Bob},
+		"managers":          {Carol},
+	})
+}
+
+// newAPI builds the suite's engine over resolver, so a case can wire a
+// directory that misbehaves.
+func newAPI(t *testing.T, resolver hmntsk.GroupResolver, opts ...transportcore.Option) *transportcore.API {
+	t.Helper()
+
 	registry := hmntsk.NewRegistry()
 
 	require.NoError(t, registry.Register(hmntsk.TypeSpec{
@@ -120,10 +136,7 @@ func NewAPI(t *testing.T, opts ...transportcore.Option) *transportcore.API {
 
 	svc, err := hmntsk.New(memstore.New(),
 		hmntsk.WithRegistry(registry),
-		hmntsk.WithGroupResolver(hmntsk.NewStaticAssignment(map[string][]string{
-			"finance-approvers": {Alice, Bob},
-			"managers":          {Carol},
-		})),
+		hmntsk.WithGroupResolver(resolver),
 	)
 	require.NoError(t, err)
 
@@ -147,4 +160,5 @@ func RunSuite(t *testing.T, mount Mount) {
 	t.Run("Inbox", func(t *testing.T) { runInboxCases(t, mount) })
 	t.Run("TaskTypes", func(t *testing.T) { runTaskTypeCases(t, mount) })
 	t.Run("Host", func(t *testing.T) { runHostCases(t, mount) })
+	t.Run("ReadAuthorization", func(t *testing.T) { runReadAuthorizationCases(t, mount) })
 }

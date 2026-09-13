@@ -245,13 +245,75 @@ queries somewhere else, such as middleware in front of the contract, and it is
 named so that serving every inbox to every caller is never an accident. Passing
 a nil policy is a configuration error from `transportcore.New`.
 
-**Limit, stated:** the policy covers the endpoints that list tasks. Reading one
-task by identifier and the lifecycle operations keep the engine's own
-eligibility and assignee rules and do not pass through it.
+**Limit, stated:** the policy covers the endpoints that list and count tasks.
+Reading one task has a policy of its own, below. The lifecycle operations keep
+the engine's own eligibility and assignee rules and pass through neither.
 
 A Go host calling `Service.Query` directly holds the actor itself, and no policy
 runs: authorization is where the actor arrives as an input, which is the HTTP
 layer.
+
+### Who may read a task
+
+**Default: `transportcore.ParticipantsOnly`.** An actor may read a task, and its
+history, when they:
+
+- hold it;
+- created it; or
+- are eligible for it: a candidate user, or a member of a candidate group, and
+  not excluded. This is the engine's own rule, the one a claim applies.
+
+Anyone else is refused. The holder and the creator are checked first, so neither
+costs a directory call.
+
+`GET /v1/tasks/{id}` and `GET /v1/tasks/{id}/history` check things in one order:
+
+1. no acting user established: `403`, before the task is looked up, so an
+   anonymous caller cannot probe which identifiers exist;
+2. no such task: `404`;
+3. the policy refuses: `403`, with the policy's message and nothing of the task;
+4. the directory could not say whether the actor is eligible: `500`, because the
+   engine could not decide, which is not deciding against the caller.
+
+```
+GET /v1/tasks/01J...            200 if you hold it, created it or may claim it
+GET /v1/tasks/01J.../history    403 if you are none of those
+GET /v1/tasks/no-such-task      404 with an acting user, 403 without one
+```
+
+**Override: `transportcore.WithTaskReadAuthorizer`.** Your policy replaces the
+default wholesale and decides every single-task and history read alone.
+`transportcore.TaskReadAuthorizerFunc` turns a function into a policy. The policy
+receives a `TaskRead` with the actor and the task, and `read.Eligible(ctx)`
+resolves eligibility by the engine's rule only when you call it:
+
+```go
+auditors := transportcore.TaskReadAuthorizerFunc(
+    func(ctx context.Context, read transportcore.TaskRead) error {
+        if directory.IsAuditor(read.Actor) {
+            return nil
+        }
+
+        return transportcore.ParticipantsOnly.AuthorizeRead(ctx, read)
+    })
+
+api, err := transportcore.New(svc, transportcore.WithTaskReadAuthorizer(auditors))
+```
+
+Any error your policy returns refuses the read with `403` and its message,
+except an error matching `hmntsk.ErrGroupResolution`, which answers `500`.
+`transportcore.AllowAll` permits every read, as it permits every query; each
+policy is still replaced only through its own option. A nil policy is a
+configuration error from `transportcore.New`. To test a policy of your own,
+describe reads with `transportcore.NewTaskRead`.
+
+**Limit, stated:** an acting user can tell a task that does not exist (`404`)
+from one they may not read (`403`). The default identifiers are UUIDv7 and not
+guessable in practice. If you supply guessable identifiers through
+`CreateRequest.ID` and must conceal existence, enforce it in your middleware.
+
+**Limit, stated:** the contract never serves a single-task read without an
+acting user, whatever the policy would say.
 
 ### Unreleased breaking changes
 
@@ -259,6 +321,10 @@ Nothing is tagged yet, so these land free:
 
 - **Queries are self-only by default.** A client that read another actor's inbox
   now gets `403`. Supply a policy, or `AllowAll` to restore the old behaviour.
+- **Reading one task is participants-only by default.** A client that read a
+  task it neither holds, created nor may claim, or read one with no acting user,
+  now gets `403`. Supply a read policy, or pass `AllowAll` to
+  `WithTaskReadAuthorizer` to restore the old behaviour.
 - **`order` is now `direction`.** The direction parameter is `direction=asc|desc`,
   beside `orderBy`. The old `order` parameter is refused with `400`, naming its replacement, rather than kept as a
   second spelling.

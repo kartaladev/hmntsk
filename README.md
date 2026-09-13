@@ -281,13 +281,23 @@ the policy for supervisors, admins or your own permission system:
 api, err := transportcore.New(svc, transportcore.WithQueryAuthorizer(yourPolicy))  // or transportcore.AllowAll
 ```
 
+Reading one task and its history (`GET /tasks/{id}`, `GET /tasks/{id}/history`)
+is **participants-only by default**: the holder, the creator or an eligible
+candidate may read it, and a read with no acting user is `403`. Replace that
+policy the same way:
+
+```go
+api, err := transportcore.New(svc, transportcore.WithTaskReadAuthorizer(yourReadPolicy))  // or transportcore.AllowAll
+```
+
 **Unreleased breaking changes:** a client that queried another actor's inbox now
-needs a policy that permits it, and the direction parameter is now
+needs a policy that permits it, a client that read a task it takes no part in
+now needs a read policy that permits it, and the direction parameter is now
 `direction=asc|desc` beside `orderBy`, replacing `order`.
 
 Errors map predictably: `409` for a concurrent-modification conflict and for an
-illegal transition, `403` for a failed eligibility or assignee check or a
-refused query, `404` for
+illegal transition, `403` for a failed eligibility or assignee check, a refused
+query or a refused read, `404` for
 an unknown task or route, `400` for a schema or request validation failure and
 for an unregistered task type. A failure to reach your directory is a `500` and
 never a `403` — the engine could not decide, which is not the same as deciding

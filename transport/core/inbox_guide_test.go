@@ -34,6 +34,8 @@ func TestInboxGuideNamesWhatTheCodeDefines(t *testing.T) {
 		transportcore.SelfOnly, transportcore.AllowAll, transportcore.WithQueryAuthorizer,
 		transportcore.QueryAuthorizerFunc(nil), hmntsk.ExpandRoute,
 		(*hmntsk.Service).Count, (*hmntsk.Service).CountBuckets,
+		transportcore.ParticipantsOnly, transportcore.WithTaskReadAuthorizer,
+		transportcore.TaskReadAuthorizerFunc(nil), transportcore.TaskRead.Eligible,
 	}
 
 	for _, mention := range []struct {
@@ -56,6 +58,11 @@ func TestInboxGuideNamesWhatTheCodeDefines(t *testing.T) {
 		{what: "the form key", text: hmntsk.MetadataFormKey},
 		{what: "the route key", text: hmntsk.MetadataRoute},
 		{what: "the route helper", text: "ExpandRoute"},
+		{what: "the default read policy", text: "ParticipantsOnly"},
+		{what: "the option that replaces the read policy", text: "WithTaskReadAuthorizer"},
+		{what: "the adapter a host writes a read policy with", text: "TaskReadAuthorizerFunc"},
+		{what: "the lazy eligibility check a read policy calls", text: "read.Eligible"},
+		{what: "the section on reading one task", text: "### Who may read a task"},
 	} {
 		t.Run(mention.what, func(t *testing.T) {
 			t.Parallel()

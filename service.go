@@ -274,6 +274,19 @@ func (s *Service) Get(ctx context.Context, id TaskID) (Task, error) {
 	return s.store.Get(ctx, id)
 }
 
+// Eligible reports whether actor may act on task as a candidate, applying
+// exclusion, candidate users and group membership exactly as a claim does. It
+// is [IsEligible] over the directory this service was built with, which stays
+// private to the engine.
+//
+// Group membership is resolved only when the pool names groups and the actor
+// is neither excluded nor a candidate user. A directory that fails, or none
+// configured for a pool that needs one, is an error matching
+// [ErrGroupResolution] and never a quiet refusal.
+func (s *Service) Eligible(ctx context.Context, task Task, actor string) (bool, error) {
+	return IsEligible(ctx, s.resolver, task.Candidates, actor)
+}
+
 // History returns a task's transition records, oldest first.
 func (s *Service) History(ctx context.Context, id TaskID) ([]TransitionRecord, error) {
 	return s.store.History(ctx, id)

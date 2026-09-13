@@ -99,21 +99,27 @@ func fiberPattern(pattern string) string {
 }
 
 // handle adapts one route.
+//
+// Every value taken from the request is copied. Fiber's strings and byte slices
+// point into buffers fasthttp reuses for the next request, and the engine keeps
+// what it is given, such as a task's creator and payload, long after this
+// handler returns. Passing them on uncopied would let the next caller overwrite
+// what an earlier one stored.
 func handle(cfg *config, route transportcore.Route) fiber.Handler {
 	params := route.Params()
 
 	return func(c fiber.Ctx) error {
 		request := transportcore.Request{
 			Method: route.Method,
-			Path:   c.Path(),
+			Path:   strings.Clone(c.Path()),
 			Params: make(map[string]string, len(params)),
 			Query:  queryValues(c),
-			Body:   c.Body(),
-			Actor:  cfg.actor(c),
+			Body:   append([]byte(nil), c.Body()...),
+			Actor:  strings.Clone(cfg.actor(c)),
 		}
 
 		for _, name := range params {
-			request.Params[name] = c.Params(name)
+			request.Params[name] = strings.Clone(c.Params(name))
 		}
 
 		return write(c, route.Handler(c.Context(), request))

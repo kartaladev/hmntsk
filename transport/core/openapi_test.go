@@ -117,6 +117,52 @@ func TestOpenAPIDocumentDescribesEveryRoute(t *testing.T) {
 	}
 }
 
+func TestOpenAPIDocumentDescribesReadRefusals(t *testing.T) {
+	t.Parallel()
+
+	type testCase struct {
+		name    string
+		pattern string
+		assert  func(t *testing.T, responses map[string]any)
+	}
+
+	declaresReadFailures := func(t *testing.T, responses map[string]any) {
+		for _, status := range []string{"200", "403", "404", "500"} {
+			assert.Containsf(t, responses, status, "status %s is not declared", status)
+		}
+	}
+
+	cases := []testCase{
+		{name: "reading a task", pattern: "/v1/tasks/{id}", assert: declaresReadFailures},
+		{name: "reading a task's history", pattern: "/v1/tasks/{id}/history", assert: declaresReadFailures},
+	}
+
+	raw, err := newAPI(t).OpenAPI()
+	require.NoError(t, err)
+
+	var document struct {
+		Paths map[string]map[string]struct {
+			Responses map[string]any `json:"responses"`
+		} `json:"paths"`
+	}
+
+	require.NoError(t, json.Unmarshal(raw, &document))
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			operation, ok := document.Paths[tc.pattern]["get"]
+			require.Truef(t, ok, "GET %s is not in the document", tc.pattern)
+
+			tc.assert(t, operation.Responses)
+		})
+	}
+
+	assert.Contains(t, string(raw), "read authorization policy refused the read",
+		"the 403 description says a read can be refused by policy, not only a query")
+}
+
 func TestOpenAPIDocumentFollowsTheBasePath(t *testing.T) {
 	t.Parallel()
 
