@@ -22,6 +22,8 @@ const RedisImage = "redis:8.2.9-alpine"
 type testConfig struct {
 	image   string
 	startup time.Duration
+	// server holds CONFIG SET parameter-value pairs, in the order given.
+	server [][2]string
 }
 
 // TestOption varies how a test broker is provisioned.
@@ -43,6 +45,19 @@ func WithTestStartupTimeout(timeout time.Duration) TestOption {
 		if timeout > 0 {
 			c.startup = timeout
 		}
+	}
+}
+
+// WithTestServerConfig sets a server configuration parameter with CONFIG SET
+// once the broker answers, for a test whose meaning depends on it — setting
+// stream-node-max-entries to 1, for instance, makes approximate stream trimming
+// exact.
+//
+// The setting is the broker's, not the client's: a suite that shares one broker
+// shares it across every case.
+func WithTestServerConfig(parameter, value string) TestOption {
+	return func(c *testConfig) {
+		c.server = append(c.server, [2]string{parameter, value})
 	}
 }
 
@@ -109,6 +124,11 @@ func RunTestRedis(t *testing.T, opts ...TestOption) *goredis.Client {
 	})
 
 	require.NoError(t, client.Ping(t.Context()).Err(), "ping the Redis test container")
+
+	for _, pair := range cfg.server {
+		require.NoErrorf(t, client.ConfigSet(t.Context(), pair[0], pair[1]).Err(),
+			"set %s on the Redis test container", pair[0])
+	}
 
 	return client
 }

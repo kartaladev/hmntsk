@@ -229,3 +229,113 @@ correctly refuses.
 A policy is consulted once **per dialled address**, so a dual-stack name that
 resolves to both an allowed and a refused address is judged on the one actually
 being connected to.
+
+---
+
+# Bounding the Redis stream
+
+`delivery/redis` appends every event to one stream with `XADD`. The message
+contract — the fields, and de-duplicating on `eventId` — is in the package
+documentation (`go doc github.com/kartaladev/hmntsk/delivery/redis`). This
+section is about how long the stream keeps what it is given, because every
+choice here either loses messages or stops publishing when it is made wrongly.
+`delivery/redis`'s `docs_test.go` asserts that the names, the version and the
+error quoted below are the ones the code and a real broker use.
+
+**By default the stream is unbounded.** Nothing is ever removed, and the stream
+grows until Redis runs out of memory. That default does not change unless you
+set a bound.
+
+## Setting a bound
+
+```go
+sink, err := redis.New(client,
+    redis.WithMaxLen(1_000_000),          // XADD hmntsk.events MAXLEN ~ 1000000 * ...
+)
+
+sink, err := redis.New(client,
+    redis.WithMaxAge(7*24*time.Hour),     // XADD hmntsk.events MINID ~ <now − 7d, in ms>-0 * ...
+)
+```
+
+The bound rides on the publish itself; there is no separate trim command and no
+job to schedule. Choose one: `New` refuses both at once, a non-positive bound,
+and a trim mode with no bound.
+
+**Trimming is always approximate, and approximate means "at least".** Redis
+stores a stream in nodes of up to `stream-node-max-entries` entries (100 by
+default) and approximate trimming only removes whole nodes. The stream therefore
+never holds fewer entries than `WithMaxLen` allows, and may hold up to about one
+node more: a bound of 10 on a 251-entry stream keeps 51 at the default node
+size. Likewise `WithMaxAge` never removes an entry newer than the cutoff, and may
+leave some older ones until their node is wholly expired.
+
+**One publish trims at most 100 × `stream-node-max-entries` entries** — 10,000 at
+the default. On a new stream that never matters. Set a bound on an existing
+stream of fifty million entries, and it shrinks by that much per publish rather
+than on the first one.
+
+**The age cutoff uses the sink's clock; entry IDs use the broker's.** Skew
+between the two shifts retention by the skew. `WithClock` supplies the clock the
+cutoff is computed from, the host's system clock by default.
+
+## Trim modes: what trimming does to consumer groups
+
+A bound deletes entries whether or not anyone has read them. `WithTrimMode`
+decides what that means for the consumer groups your consumers use:
+
+| Mode | Entries a group has not acknowledged | Those entries' IDs in the group's pending list |
+| --- | --- | --- |
+| _unset_ (Redis's default, which on 8.2 is `KEEPREF`) | trimmed | kept, with no content behind them |
+| `TrimKeepRef` (`KEEPREF`) | trimmed | kept, with no content behind them |
+| `TrimDelRef` (`DELREF`) | trimmed | removed |
+| `TrimAcked` (`ACKED`) | **kept**: trimming stops at the first entry any group has not acknowledged | untouched |
+
+```go
+sink, err := redis.New(client,
+    redis.WithMaxLen(1_000_000),
+    redis.WithTrimMode(redis.TrimAcked),  // XADD hmntsk.events ACKED MAXLEN ~ 1000000 * ...
+)
+```
+
+What each costs you:
+
+- **Unset and `TrimKeepRef` lose unread messages.** A consumer that falls further
+  behind than the bound finds IDs in its pending list whose entries are gone:
+  reading its history returns the ID with no fields, and claiming it returns
+  nothing. Consumer code must tolerate a pending entry with an empty body.
+- **`TrimDelRef` loses them silently.** The IDs vanish from the pending list too,
+  so a consumer never learns that anything was lost.
+- **`TrimAcked` can stop trimming altogether.** An entry a group has never read is
+  an entry that group has not acknowledged. One stale group — created by a
+  consumer you no longer run, or one that is stuck — holds every entry after its
+  position, and the stream is unbounded again, silently. Delete groups you no
+  longer run (`XGROUP DESTROY`), check `XINFO GROUPS` for lag, and alert on
+  `XLEN`. With no groups at all, `TrimAcked` trims exactly as an unset mode does.
+
+## Trim modes need Redis 8.2 or newer
+
+**Every trim mode requires Redis 8.2+**, including `TrimKeepRef`, which only
+names what 8.2 does anyway. On an older server, every publish from a sink with a
+trim mode fails with:
+
+```
+ERR Invalid stream ID specified as stream command argument
+```
+
+The error names neither trimming nor modes. The sink classifies it as retryable,
+exactly as it does every broker rejection — the sink cannot tell a server that
+will never accept the command from one that is briefly refusing writes — so the
+relay retries each event with backoff until the attempt limit, and then
+**dead-letters it**. Nothing reaches the stream in the meantime.
+
+A bound **without** a trim mode sends no mode keyword and works on every Redis
+version the sink supports. `New` does not dial, so it cannot check the server for
+you. Check before you set a mode:
+
+```sh
+redis-cli INFO server | grep redis_version     # must be 8.2.0 or later
+```
+
+Removing a bound or a mode takes effect on the next publish. Entries already
+trimmed are gone.
