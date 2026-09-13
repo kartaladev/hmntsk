@@ -119,6 +119,42 @@ func (b *Builder) encodeValue(value any) any {
 	return string(encoded)
 }
 
+// encodeSinks renders the sinks that have accepted an event as the JSON array
+// the column stores.
+//
+// No sink having accepted is NULL rather than an empty array, so that a row
+// nobody has delivered yet and a row whose acceptances were cleared read back
+// identically — and so that the column costs nothing on the overwhelming
+// majority of rows, which are delivered on the first attempt.
+func (b *Builder) encodeSinks(sinks []string) any {
+	if len(sinks) == 0 {
+		return nil
+	}
+
+	return b.encodeValue(sinks)
+}
+
+// decodeSinks reads back the accepted-sink set, mapping NULL and an empty array
+// alike to no sinks.
+func decodeSinks(value any) ([]string, error) {
+	raw, err := DecodeJSON(value)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(raw) == 0 {
+		return nil, nil
+	}
+
+	var sinks []string
+
+	if err := json.Unmarshal(raw, &sinks); err != nil {
+		return nil, fmt.Errorf("sqlcore: column accepted_sinks: %w", err)
+	}
+
+	return sinks, nil
+}
+
 // DecodeJSON reads back a JSON column as raw bytes, whatever shape the driver
 // returned it in.
 func DecodeJSON(value any) (json.RawMessage, error) {

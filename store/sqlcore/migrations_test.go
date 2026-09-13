@@ -4,10 +4,12 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/kartaladev/hmntsk"
 	"github.com/kartaladev/hmntsk/store/sqlcore"
 )
 
@@ -76,6 +78,11 @@ func TestMigrationsCoverEveryColumnTheStatementsUse(t *testing.T) {
 			for _, column := range b.HistoryColumns() {
 				assert.Containsf(t, joined, dialect.Quote(column), "history column %s", column)
 			}
+
+			for _, column := range b.OutboxColumns() {
+				assert.Containsf(t, joined, dialect.Quote(column),
+					"the outbox table must declare %s, which the relay reads and writes", column)
+			}
 		})
 	}
 }
@@ -143,6 +150,20 @@ func TestTablePrefixReachesEveryStatement(t *testing.T) {
 		"SelectHistory":    b.SelectHistory(task.ID),
 		"SelectOutbox":     b.SelectOutbox(10),
 		"SelectTypes":      b.SelectTypes(),
+		"SelectDueEvents": b.SelectDueEvents(hmntsk.OutboxClaim{
+			Now: reference, Owner: "relay-1", Duration: time.Minute, Limit: 10,
+		}),
+		"ClaimEvent": b.ClaimEvent("e-1", hmntsk.OutboxClaim{
+			Now: reference, Owner: "relay-1", Duration: time.Minute, Limit: 10,
+		}),
+		"SelectOutboxEntry": b.SelectOutboxEntry("e-1"),
+		"RecordAttempt": b.RecordAttempt(hmntsk.AttemptRecord{
+			EventID: "e-1", Attempts: 1, NextAttemptAt: reference,
+		}),
+		"MarkAccepted": b.MarkAccepted(hmntsk.Acceptance{
+			EventID: "e-1", Accepted: []string{"webhook"}, PublishedAt: &reference,
+		}),
+		"MarkDeadLettered": b.MarkDeadLettered(hmntsk.DeadLetter{EventID: "e-1", Attempts: 5}),
 	}
 
 	for name, statement := range statements {

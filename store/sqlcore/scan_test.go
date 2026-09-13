@@ -257,7 +257,8 @@ func TestOutboxRoundTrip(t *testing.T) {
 			t.Parallel()
 
 			statement := sqlcore.New(dialect).InsertOutbox(rows)
-			require.Len(t, statement.Args, 7)
+			require.Len(t, statement.Args, 13,
+				"the event's own columns, then the delivery state the relay reads and writes")
 
 			events, err := sqlcore.ScanOutbox(&valueRows{rows: [][]any{statement.Args}})
 			require.NoError(t, err)

@@ -51,6 +51,41 @@ func openPool(t *testing.T, dsn string) *pgxpool.Pool {
 	return pool
 }
 
+// newStore builds a store over its own prefixed schema, migrated, verified and
+// dropped when the case ends.
+//
+// It is separate from the harness so that the relay suite can build a store the
+// same way — change the prefix scheme, the drop timeout or the verification and
+// both suites move together, rather than one of them silently running against a
+// setup the other stopped using.
+//
+// A prefix per case is what lets a whole suite share one container, and it
+// means every run against a real engine is also a run of the table-prefix
+// option — the thing a host configures once on day one and can never change
+// afterwards.
+func newStore(t *testing.T, pool *pgxpool.Pool) *pgxstore.Store {
+	t.Helper()
+
+	store := pgxstore.New(pool, pgxstore.WithTablePrefix(storetest.NextTablePrefix()))
+
+	require.NoError(t, store.Migrate(t.Context()), "apply the published schema")
+
+	t.Cleanup(func() {
+		// Not t.Context(): it is already cancelled by the time cleanup runs.
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		if err := store.Builder().Drop(ctx, store); err != nil {
+			t.Errorf("drop the test schema: %s", err)
+		}
+	})
+
+	require.NoError(t, store.VerifySchema(t.Context()),
+		"the schema the engine publishes must satisfy the verification the engine runs")
+
+	return store
+}
+
 func TestStoreOnPostgres(t *testing.T) {
 	t.Parallel()
 
@@ -59,20 +94,7 @@ func TestStoreOnPostgres(t *testing.T) {
 	storetest.RunSuite(t, func(t *testing.T) storetest.Harness {
 		t.Helper()
 
-		store := pgxstore.New(pool, pgxstore.WithTablePrefix(storetest.NextTablePrefix()))
-
-		require.NoError(t, store.Migrate(t.Context()), "apply the published schema")
-
-		t.Cleanup(func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-
-			if err := store.Builder().Drop(ctx, store); err != nil {
-				t.Errorf("drop the test schema: %s", err)
-			}
-		})
-
-		require.NoError(t, store.VerifySchema(t.Context()))
+		store := newStore(t, pool)
 
 		return storetest.Harness{
 			Store: store,
