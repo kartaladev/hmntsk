@@ -1,5 +1,23 @@
 schema: spec-driven
 
+context: |
+  hmntsk is a Go library that other applications embed, not a service. Design
+  principle for every change: the library is opinionated and applies sensible
+  defaults, while the consumer keeps full control to customise how it works in
+  their application.
+  - Every behaviour has a safe, working default that needs no configuration.
+  - Every default is replaceable without forking: a functional option, a port
+    (interface), a hook, or plain data.
+  - Conventions (well-known keys, presets, names) are documented, named
+    constants that a consumer may follow or ignore.
+  - Where flexibility would break a guarantee, the limit is stated and enforced,
+    never silently relaxed.
+  - Consumer-owned data (correlation, payloads, reference parameters, metadata)
+    is stored and returned unchanged, never interpreted.
+  - Wiring mistakes fail at construction.
+  In design.md, each decision states its default and how a consumer overrides
+  it. The full rule is in .claude/rules/library-design.md.
+
 # Project context (optional)
 # This is shown to AI when creating artifacts.
 # Add your tech stack, conventions, style guides, domain knowledge, etc.
