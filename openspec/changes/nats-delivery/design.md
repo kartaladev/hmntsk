@@ -133,7 +133,7 @@ With no stream bound to the subject, the publish returns `ErrNoStreamResponse`. 
 | event has no ID, or will not marshal | both | permanent (`ErrInvalidEvent`) |
 | `nats.ErrMaxPayload` | both | permanent: same event, same size |
 | `nats.ErrBadSubject` | both | permanent: cannot occur for a validated prefix and a catalogue event type, but classified for completeness |
-| `nats.ErrHeadersNotSupported` | both | permanent: a server too old for headers will not grow them between passes |
+| `nats.ErrHeadersNotSupported` | both | retryable: the client also returns it for every headered message on a connection that has not completed its first connect (`RetryOnFailedConnect`, no server INFO yet), so a permanent verdict would dead-letter every event published before the first connect. A genuinely header-less server (older than 2.2) retries until dead-lettered, the same trade-off as a forgotten stream. _Changed during apply, with the user's approval; originally permanent._ |
 | closed or draining connection, `ErrReconnectBufExceeded`, flush or publish deadline, context cancelled | both | retryable |
 | `jetstream.ErrNoStreamResponse`, expected-stream mismatch, any other JetStream API error | JetStream | retryable |
 
