@@ -111,4 +111,4 @@ Table tests use the project's `assert` closure form and `t.Context()`. Container
 
 - [x] 7.1 Run `/simplify` on the touched `delivery/nats` code, then re-run the module's tests with `-race`.
 - [x] 7.2 `GOTOOLCHAIN=go1.26.8 make lint test test-race test-integration vuln` is green across all 15 modules. `openspec validate nats-delivery --strict` passes.
-- [ ] 7.3 On the PR, the new `delivery delivery/nats` CI job runs and passes alongside the existing 24 checks.
+- [x] 7.3 On the PR, the new `delivery delivery/nats` CI job runs and passes alongside the existing 24 checks.
