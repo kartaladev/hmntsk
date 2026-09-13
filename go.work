@@ -6,6 +6,11 @@ use (
 	./delivery/redis
 	./delivery/webhook
 	./relaytest
+	./sqlkit
+	./sqlkit/gorm
+	./sqlkit/pgx
+	./sqlkit/sqlkittest
+	./sqlkit/stdsql
 	./store/gorm
 	./store/pgx
 	./store/sql
