@@ -57,7 +57,7 @@ pulls in no driver and no web framework.
 | `.../transport/gin` | gin binding |
 | `.../transport/fiber` | Fiber v3 binding |
 | `.../delivery/webhook` | Webhook sink: signs, echoes reference parameters, refuses internal addresses |
-| `.../delivery/redis` | Redis Streams sink, producer only |
+| `.../delivery/redis` | Redis Streams sink, producer only; optional length or age retention |
 | `.../storetest` | The suite every store adapter must pass |
 | `.../transporttest` | The suite every transport binding must pass |
 | `.../relaytest` | The suite every relay must pass, on every dialect |
@@ -204,7 +204,7 @@ not import it:
 | Module | Delivers to |
 | --- | --- |
 | `delivery/webhook` | The task's `CallbackTarget.Address`, with reference parameters echoed verbatim, an HMAC signature over the timestamp and body, and a default-deny policy on the resolved destination address |
-| `delivery/redis` | A Redis Stream, for internal consumers — producer only: no consumer groups, no offsets |
+| `delivery/redis` | A Redis Stream, for internal consumers — producer only: no consumer groups, no offsets. Unbounded by default; optionally trimmed by length or age on each publish, with a trim mode (Redis 8.2+) deciding whether unacknowledged entries may go — see the constraints in [docs/delivery.md](docs/delivery.md#bounding-the-redis-stream) |
 
 Because a callback address is supplied by whoever created the task, the webhook
 sink refuses to connect to a destination its policy rejects, evaluated against

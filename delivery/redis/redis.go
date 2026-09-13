@@ -42,6 +42,14 @@
 // Redelivery carries the same eventId, so a consumer de-duplicates on it. The
 // relay delivers at least once: a crash between a successful XADD and the
 // record of that success republishes the event.
+//
+// # Retention
+//
+// By default the stream is never trimmed and grows without limit. [WithMaxLen]
+// or [WithMaxAge] bounds it as part of each publish, and [WithTrimMode] decides
+// what trimming does about consumer groups. Every choice here either loses
+// messages or stops publishing when made wrongly: read docs/delivery.md, under
+// "Bounding the Redis stream", before setting one.
 package redis
 
 import (
@@ -52,6 +60,7 @@ import (
 
 	goredis "github.com/redis/go-redis/v9"
 
+	"github.com/kartaladev/hmntsk"
 	"github.com/kartaladev/hmntsk/relay"
 )
 
@@ -125,9 +134,11 @@ const (
 
 // config is the sink's settings before they are frozen into a [Sink].
 type config struct {
-	name    string
-	stream  string
-	timeout time.Duration
+	name      string
+	stream    string
+	timeout   time.Duration
+	retention retention
+	clock     hmntsk.Clock
 }
 
 // Option varies how a [Sink] publishes.
@@ -163,10 +174,12 @@ func WithTimeout(timeout time.Duration) Option {
 // It is safe for concurrent use: it holds no mutable state, and the underlying
 // client is itself concurrency-safe.
 type Sink struct {
-	client  goredis.UniversalClient
-	name    string
-	stream  string
-	timeout time.Duration
+	client    goredis.UniversalClient
+	name      string
+	stream    string
+	timeout   time.Duration
+	retention retention
+	clock     hmntsk.Clock
 }
 
 // Sink is a relay sink. Asserted here so that a change to the interface is a
@@ -188,6 +201,7 @@ func New(client goredis.UniversalClient, opts ...Option) (*Sink, error) {
 		name:    DefaultName,
 		stream:  DefaultStream,
 		timeout: DefaultTimeout,
+		clock:   hmntsk.SystemClock{},
 	}
 
 	for _, opt := range opts {
@@ -210,11 +224,17 @@ func New(client goredis.UniversalClient, opts ...Option) (*Sink, error) {
 		return nil, &ConfigurationError{Detail: "the publish timeout must be positive"}
 	}
 
+	if err := cfg.retention.validate(); err != nil {
+		return nil, err
+	}
+
 	return &Sink{
-		client:  client,
-		name:    cfg.name,
-		stream:  cfg.stream,
-		timeout: cfg.timeout,
+		client:    client,
+		name:      cfg.name,
+		stream:    cfg.stream,
+		timeout:   cfg.timeout,
+		retention: cfg.retention,
+		clock:     cfg.clock,
 	}, nil
 }
 
@@ -290,8 +310,11 @@ func (s *Sink) publish(ctx context.Context, values []any) error {
 	// when nobody is waiting for it any more.
 	done := make(chan error, 1)
 
+	args := &goredis.XAddArgs{Stream: s.stream, Values: values}
+	s.retention.trim(args, s.clock)
+
 	go func() {
-		done <- s.client.XAdd(ctx, &goredis.XAddArgs{Stream: s.stream, Values: values}).Err()
+		done <- s.client.XAdd(ctx, args).Err()
 	}()
 
 	select {

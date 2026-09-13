@@ -53,14 +53,7 @@ var streams atomic.Uint64
 func (s *publishSuite) newSink(opts ...hmntskredis.Option) (sink *hmntskredis.Sink, stream string) {
 	s.T().Helper()
 
-	stream = fmt.Sprintf("hmntsk.test.%d", streams.Add(1))
-
-	sink, err := hmntskredis.New(s.client, append([]hmntskredis.Option{
-		hmntskredis.WithStream(stream),
-	}, opts...)...)
-	s.Require().NoError(err)
-
-	return sink, stream
+	return newStreamSink(s.T(), s.client, opts...)
 }
 
 // entries reads every message on a stream, oldest first.
@@ -351,13 +344,7 @@ func (s *publishSuite) TestBacklogSurvivesAnOutage() {
 	})
 	t.Cleanup(func() { _ = client.Close() })
 
-	stream := fmt.Sprintf("hmntsk.test.%d", streams.Add(1))
-	sink, err := hmntskredis.New(
-		client,
-		hmntskredis.WithStream(stream),
-		hmntskredis.WithTimeout(2*time.Second),
-	)
-	require.NoError(t, err)
+	sink, stream := newStreamSink(t, client, hmntskredis.WithTimeout(2*time.Second))
 
 	backlog := make([]hmntsk.Event, 0, 3)
 	for i := range 3 {
@@ -385,12 +372,8 @@ func (s *publishSuite) TestBacklogSurvivesAnOutage() {
 		requireDelivered(t, sink.Deliver(ctx, attempt(event)))
 	}
 
-	published := make([]string, 0, len(backlog))
-	for _, message := range s.entries(ctx, stream) {
-		published = append(published, fieldsOf(t, message)[hmntskredis.FieldEventID])
-	}
-
-	require.Equal(t, []string{"evt-backlog-0", "evt-backlog-1", "evt-backlog-2"}, published)
+	require.Equal(t, []string{"evt-backlog-0", "evt-backlog-1", "evt-backlog-2"},
+		eventIDs(t, ctx, s.client, stream))
 }
 
 // requireDelivered fails the test unless the sink took the event.
@@ -414,6 +397,50 @@ func fieldsOf(t *testing.T, message goredis.XMessage) map[string]string {
 	}
 
 	return fields
+}
+
+// newStreamSink returns a sink on client publishing to a stream no other case
+// touches, and that stream.
+func newStreamSink(
+	t *testing.T,
+	client goredis.UniversalClient,
+	opts ...hmntskredis.Option,
+) (sink *hmntskredis.Sink, stream string) {
+	t.Helper()
+
+	stream = fmt.Sprintf("hmntsk.test.%d", streams.Add(1))
+
+	sink, err := hmntskredis.New(client, append([]hmntskredis.Option{
+		hmntskredis.WithStream(stream),
+	}, opts...)...)
+	require.NoError(t, err)
+
+	return sink, stream
+}
+
+// publishEvent delivers one event with the given identifier, failing the test
+// unless the sink took it.
+func publishEvent(t *testing.T, ctx context.Context, sink *hmntskredis.Sink, eventID string) {
+	t.Helper()
+
+	event := testEvent()
+	event.ID = eventID
+	requireDelivered(t, sink.Deliver(ctx, attempt(event)))
+}
+
+// eventIDs reads the event identifiers on a stream, oldest first.
+func eventIDs(t *testing.T, ctx context.Context, client goredis.UniversalClient, stream string) []string {
+	t.Helper()
+
+	messages, err := client.XRange(ctx, stream, "-", "+").Result()
+	require.NoError(t, err, "read the stream back")
+
+	ids := make([]string, 0, len(messages))
+	for _, message := range messages {
+		ids = append(ids, fieldsOf(t, message)[hmntskredis.FieldEventID])
+	}
+
+	return ids
 }
 
 // brokerProxy is a switchable TCP relay in front of the real broker, so a test

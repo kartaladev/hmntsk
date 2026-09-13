@@ -25,6 +25,20 @@ func TestNew(t *testing.T) {
 
 	client := goredis.NewClient(&goredis.Options{Addr: "127.0.0.1:6379"})
 
+	rejected := func(t *testing.T, sink *hmntskredis.Sink, err error) {
+		t.Helper()
+
+		require.ErrorIs(t, err, hmntskredis.ErrConfiguration)
+		assert.Nil(t, sink)
+	}
+
+	accepted := func(t *testing.T, sink *hmntskredis.Sink, err error) {
+		t.Helper()
+
+		require.NoError(t, err)
+		assert.NotNil(t, sink)
+	}
+
 	cases := []testCase{
 		{
 			name:   "defaults",
@@ -53,37 +67,134 @@ func TestNew(t *testing.T) {
 		{
 			name:   "nil client",
 			client: nil,
-			assert: func(t *testing.T, sink *hmntskredis.Sink, err error) {
-				require.ErrorIs(t, err, hmntskredis.ErrConfiguration)
-				assert.Nil(t, sink)
-			},
+			assert: rejected,
 		},
 		{
 			name:   "empty stream",
 			client: client,
 			opts:   []hmntskredis.Option{hmntskredis.WithStream("")},
-			assert: func(t *testing.T, sink *hmntskredis.Sink, err error) {
-				require.ErrorIs(t, err, hmntskredis.ErrConfiguration)
-				assert.Nil(t, sink)
-			},
+			assert: rejected,
 		},
 		{
 			name:   "empty name",
 			client: client,
 			opts:   []hmntskredis.Option{hmntskredis.WithName("")},
-			assert: func(t *testing.T, sink *hmntskredis.Sink, err error) {
-				require.ErrorIs(t, err, hmntskredis.ErrConfiguration)
-				assert.Nil(t, sink)
-			},
+			assert: rejected,
 		},
 		{
 			name:   "non-positive timeout",
 			client: client,
 			opts:   []hmntskredis.Option{hmntskredis.WithTimeout(0)},
-			assert: func(t *testing.T, sink *hmntskredis.Sink, err error) {
-				require.ErrorIs(t, err, hmntskredis.ErrConfiguration)
-				assert.Nil(t, sink)
+			assert: rejected,
+		},
+		{
+			name:   "zero length bound",
+			client: client,
+			opts:   []hmntskredis.Option{hmntskredis.WithMaxLen(0)},
+			assert: rejected,
+		},
+		{
+			name:   "negative length bound",
+			client: client,
+			opts:   []hmntskredis.Option{hmntskredis.WithMaxLen(-1)},
+			assert: rejected,
+		},
+		{
+			name:   "zero age bound",
+			client: client,
+			opts:   []hmntskredis.Option{hmntskredis.WithMaxAge(0)},
+			assert: rejected,
+		},
+		{
+			name:   "negative age bound",
+			client: client,
+			opts:   []hmntskredis.Option{hmntskredis.WithMaxAge(-time.Second)},
+			assert: rejected,
+		},
+		{
+			// The broker takes one threshold per command, and the client would
+			// silently prefer the length: one of them would quietly not apply.
+			name:   "length and age bound together",
+			client: client,
+			opts: []hmntskredis.Option{
+				hmntskredis.WithMaxLen(1000),
+				hmntskredis.WithMaxAge(time.Hour),
 			},
+			assert: rejected,
+		},
+		{
+			// A mode with nothing to trim is meaningless, and would still break
+			// every publish on a broker older than trim modes.
+			name:   "trim mode without a bound",
+			client: client,
+			opts:   []hmntskredis.Option{hmntskredis.WithTrimMode(hmntskredis.TrimAcked)},
+			assert: rejected,
+		},
+		{
+			name:   "undefined trim mode in the wrong case",
+			client: client,
+			opts: []hmntskredis.Option{
+				hmntskredis.WithMaxLen(1000),
+				hmntskredis.WithTrimMode("acked"),
+			},
+			assert: rejected,
+		},
+		{
+			name:   "undefined trim mode",
+			client: client,
+			opts: []hmntskredis.Option{
+				hmntskredis.WithMaxLen(1000),
+				hmntskredis.WithTrimMode("BOGUS"),
+			},
+			assert: rejected,
+		},
+		{
+			name:   "length bound",
+			client: client,
+			opts:   []hmntskredis.Option{hmntskredis.WithMaxLen(1000)},
+			assert: accepted,
+		},
+		{
+			name:   "age bound",
+			client: client,
+			opts:   []hmntskredis.Option{hmntskredis.WithMaxAge(time.Hour)},
+			assert: accepted,
+		},
+		{
+			name:   "length bound keeping references",
+			client: client,
+			opts: []hmntskredis.Option{
+				hmntskredis.WithMaxLen(1000),
+				hmntskredis.WithTrimMode(hmntskredis.TrimKeepRef),
+			},
+			assert: accepted,
+		},
+		{
+			name:   "length bound deleting references",
+			client: client,
+			opts: []hmntskredis.Option{
+				hmntskredis.WithMaxLen(1000),
+				hmntskredis.WithTrimMode(hmntskredis.TrimDelRef),
+			},
+			assert: accepted,
+		},
+		{
+			name:   "age bound trimming only acknowledged entries",
+			client: client,
+			opts: []hmntskredis.Option{
+				hmntskredis.WithMaxAge(time.Hour),
+				hmntskredis.WithTrimMode(hmntskredis.TrimAcked),
+			},
+			assert: accepted,
+		},
+		{
+			name:   "nil clock is ignored",
+			client: client,
+			opts: []hmntskredis.Option{
+				hmntskredis.WithMaxAge(time.Hour),
+				hmntskredis.WithClock(nil),
+			},
+			assert: accepted,
 		},
 	}
 
