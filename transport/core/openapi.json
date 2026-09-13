@@ -1,6 +1,17 @@
 {
   "components": {
     "schemas": {
+      "CountResponse": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count"
+        ],
+        "type": "object"
+      },
       "CreateTaskRequest": {
         "properties": {
           "callback": {
@@ -567,6 +578,12 @@
                   "type": "string"
                 },
                 "inputSchema": {},
+                "metadata": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
                 "name": {
                   "type": "string"
                 },
@@ -601,6 +618,12 @@
             "type": "string"
           },
           "inputSchema": {},
+          "metadata": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
           "name": {
             "type": "string"
           },
@@ -685,7 +708,7 @@
         "operationId": "queryTasks",
         "parameters": [
           {
-            "description": "Tasks reserved for this actor.",
+            "description": "Tasks reserved for this actor; `me` names the acting user.",
             "in": "query",
             "name": "assignee",
             "required": false,
@@ -694,9 +717,18 @@
             }
           },
           {
-            "description": "Tasks this actor may act on, with group membership resolved now.",
+            "description": "Tasks this actor may act on, with group membership resolved now; `me` names the acting user.",
             "in": "query",
             "name": "candidate",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Tasks whose candidate pool names this group, as configured: no membership is resolved.",
+            "in": "query",
+            "name": "group",
             "required": false,
             "schema": {
               "type": "string"
@@ -773,7 +805,7 @@
             }
           },
           {
-            "description": "Continue a previous page.",
+            "description": "Continue a previous page. It is bound to the ordering and direction that produced it.",
             "in": "query",
             "name": "cursor",
             "required": false,
@@ -782,9 +814,24 @@
             }
           },
           {
-            "description": "Ordering by task identifier.",
+            "description": "The ordering: creation by default; urgency is priority, then due date, then creation.",
             "in": "query",
-            "name": "order",
+            "name": "orderBy",
+            "required": false,
+            "schema": {
+              "enum": [
+                "created",
+                "priority",
+                "due",
+                "urgency"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "The direction of the ordering, asc by default. Tasks without a deadline sort last either way.",
+            "in": "query",
+            "name": "direction",
             "required": false,
             "schema": {
               "enum": [
@@ -816,6 +863,16 @@
             },
             "description": "The request or its payload failed validation, or named a task type that is not registered."
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox."
+          },
           "500": {
             "content": {
               "application/json": {
@@ -827,7 +884,7 @@
             "description": "The request could not be completed. A failure to resolve group membership lands here rather than on 403: the engine could not decide, which is not the same as deciding against the caller."
           }
         },
-        "summary": "Query tasks by assignee, eligibility, status, type or correlation."
+        "summary": "Query tasks by assignee, eligibility, group, status, type or correlation, in a supported ordering."
       },
       "post": {
         "operationId": "createTask",
@@ -874,6 +931,144 @@
           }
         },
         "summary": "Create a task."
+      }
+    },
+    "/v1/tasks/count": {
+      "get": {
+        "operationId": "countTasks",
+        "parameters": [
+          {
+            "description": "Tasks reserved for this actor; `me` names the acting user.",
+            "in": "query",
+            "name": "assignee",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Tasks this actor may act on, with group membership resolved now; `me` names the acting user.",
+            "in": "query",
+            "name": "candidate",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Tasks whose candidate pool names this group, as configured: no membership is resolved.",
+            "in": "query",
+            "name": "group",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Restrict to these lifecycle states.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          {
+            "description": "Restrict to these task types.",
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          {
+            "description": "Correlation: the kind of thing that owns the task.",
+            "in": "query",
+            "name": "ownerType",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Correlation: the owning unit of work.",
+            "in": "query",
+            "name": "ownerRef",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Correlation: the step the task stands for.",
+            "in": "query",
+            "name": "activityKey",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Tasks due strictly before this instant.",
+            "in": "query",
+            "name": "dueBefore",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CountResponse"
+                }
+              }
+            },
+            "description": "The operation succeeded."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request or its payload failed validation, or named a task type that is not registered."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request could not be completed. A failure to resolve group membership lands here rather than on 403: the engine could not decide, which is not the same as deciding against the caller."
+          }
+        },
+        "summary": "Count the tasks a query matches, such as for an inbox badge."
       }
     },
     "/v1/tasks/{id}": {
@@ -928,7 +1123,7 @@
                 }
               }
             },
-            "description": "The acting actor is not eligible for the task, or is not its assignee."
+            "description": "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox."
           },
           "404": {
             "content": {
@@ -1052,7 +1247,7 @@
                 }
               }
             },
-            "description": "The acting actor is not eligible for the task, or is not its assignee."
+            "description": "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox."
           },
           "404": {
             "content": {
@@ -1140,7 +1335,7 @@
                 }
               }
             },
-            "description": "The acting actor is not eligible for the task, or is not its assignee."
+            "description": "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox."
           },
           "404": {
             "content": {
@@ -1228,7 +1423,7 @@
                 }
               }
             },
-            "description": "The acting actor is not eligible for the task, or is not its assignee."
+            "description": "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox."
           },
           "404": {
             "content": {
@@ -1316,7 +1511,7 @@
                 }
               }
             },
-            "description": "The acting actor is not eligible for the task, or is not its assignee."
+            "description": "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox."
           },
           "404": {
             "content": {
@@ -1404,7 +1599,7 @@
                 }
               }
             },
-            "description": "The acting actor is not eligible for the task, or is not its assignee."
+            "description": "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox."
           },
           "404": {
             "content": {
@@ -1530,7 +1725,7 @@
                 }
               }
             },
-            "description": "The acting actor is not eligible for the task, or is not its assignee."
+            "description": "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox."
           },
           "404": {
             "content": {
@@ -1618,7 +1813,7 @@
                 }
               }
             },
-            "description": "The acting actor is not eligible for the task, or is not its assignee."
+            "description": "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox."
           },
           "404": {
             "content": {
@@ -1706,7 +1901,7 @@
                 }
               }
             },
-            "description": "The acting actor is not eligible for the task, or is not its assignee."
+            "description": "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox."
           },
           "404": {
             "content": {
@@ -1794,7 +1989,7 @@
                 }
               }
             },
-            "description": "The acting actor is not eligible for the task, or is not its assignee."
+            "description": "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox."
           },
           "404": {
             "content": {
@@ -1882,7 +2077,7 @@
                 }
               }
             },
-            "description": "The acting actor is not eligible for the task, or is not its assignee."
+            "description": "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox."
           },
           "404": {
             "content": {

@@ -32,6 +32,10 @@ func (b *Builder) UpsertType(spec hmntsk.TypeSpec, now time.Time) Statement {
 		b.encodeValue(spec.DefaultEscalation),
 		b.encodeValue(spec.DefaultAssignment),
 		b.encodeTime(&updatedAt),
+		// A JSON object with its keys sorted, which is how encoding/json writes
+		// a map, so a type read back compares equal to the one registered. No
+		// metadata is NULL.
+		b.encodeValue(spec.Metadata),
 	}
 
 	s.write("INSERT INTO ", b.Table(TypesTable), " (", b.quoteList("", typeColumns), ") VALUES (")
@@ -172,6 +176,17 @@ func typeSpec(values []any) (hmntsk.TypeSpec, error) {
 	if len(assignment) > 0 {
 		if unmarshalErr := json.Unmarshal(assignment, &spec.DefaultAssignment); unmarshalErr != nil {
 			return hmntsk.TypeSpec{}, fmt.Errorf("sqlcore: column default_assignment: %w", unmarshalErr)
+		}
+	}
+
+	metadata, err := DecodeJSON(values[10])
+	if err != nil {
+		return hmntsk.TypeSpec{}, err
+	}
+
+	if len(metadata) > 0 {
+		if unmarshalErr := json.Unmarshal(metadata, &spec.Metadata); unmarshalErr != nil {
+			return hmntsk.TypeSpec{}, fmt.Errorf("sqlcore: column metadata: %w", unmarshalErr)
 		}
 	}
 

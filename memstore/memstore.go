@@ -13,10 +13,14 @@
 package memstore
 
 import (
+	"cmp"
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"maps"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -339,59 +343,174 @@ func (s *Store) snapshot(ctx context.Context) []hmntsk.Task {
 	return slices.Collect(maps.Values(s.tasks))
 }
 
-// Query implements [hmntsk.Repository].
+// Query implements [hmntsk.Repository]. It orders and continues by comparing
+// the same key the SQL stores compare, so the conformance suite can hold every
+// adapter to one sequence.
 func (s *Store) Query(ctx context.Context, query hmntsk.ResolvedQuery) (hmntsk.Page, error) {
+	// An ordering this store cannot compare is refused rather than read as
+	// creation order, exactly as the SQL stores refuse it.
+	if !query.OrderBy.Valid() {
+		return hmntsk.Page{}, &hmntsk.ValidationError{Subject: "request", Issues: []hmntsk.ValidationIssue{{
+			Detail: "ordering " + strconv.Quote(string(query.OrderBy)) + " is not supported",
+		}}}
+	}
+
+	var after *position
+
+	if query.Cursor != "" {
+		decoded, err := decodeCursor(query.Query)
+		if err != nil {
+			return hmntsk.Page{}, err
+		}
+
+		after = &decoded
+	}
+
 	candidates := s.snapshot(ctx)
 
 	matched := make([]hmntsk.Task, 0, len(candidates))
 
 	for _, task := range candidates {
-		if matches(task, query) {
-			matched = append(matched, task.Clone())
+		if !matches(task, query) {
+			continue
 		}
+
+		if after != nil && compare(positionOf(task), *after, query.Query) <= 0 {
+			continue
+		}
+
+		matched = append(matched, task)
 	}
 
-	sort.Slice(matched, func(i, j int) bool {
-		if query.Descending {
-			return matched[i].ID > matched[j].ID
-		}
-
-		return matched[i].ID < matched[j].ID
+	slices.SortFunc(matched, func(a, b hmntsk.Task) int {
+		return compare(positionOf(a), positionOf(b), query.Query)
 	})
-
-	matched = afterCursor(matched, query)
 
 	limit := query.EffectiveLimit()
 
 	page := hmntsk.Page{}
 	if len(matched) > limit {
 		matched = matched[:limit]
-		page.NextCursor = matched[len(matched)-1].ID.String()
+		page.NextCursor = encodeCursor(query.Query, positionOf(matched[len(matched)-1]))
 	}
 
-	page.Tasks = matched
+	// Only the page is copied out: the rest of the matches were sorted in place
+	// and never leave the store.
+	page.Tasks = make([]hmntsk.Task, 0, len(matched))
+	for _, task := range matched {
+		page.Tasks = append(page.Tasks, task.Clone())
+	}
 
 	return page, nil
 }
 
-// afterCursor drops everything up to and including the cursor position.
-func afterCursor(tasks []hmntsk.Task, query hmntsk.ResolvedQuery) []hmntsk.Task {
-	if query.Cursor == "" {
-		return tasks
+// Count implements [hmntsk.Repository].
+func (s *Store) Count(ctx context.Context, query hmntsk.ResolvedQuery) (int64, error) {
+	var count int64
+
+	for _, task := range s.snapshot(ctx) {
+		if matches(task, query) {
+			count++
+		}
 	}
 
-	for i, task := range tasks {
-		beyond := task.ID.String() > query.Cursor
+	return count, nil
+}
+
+// position is where a task sits under an ordering: every value an ordering's
+// key reads, ending with the identifier that makes the ordering total.
+type position struct {
+	Priority hmntsk.Priority `json:"p"`
+	DueAt    *time.Time      `json:"t,omitempty"`
+	ID       hmntsk.TaskID   `json:"i"`
+}
+
+// positionOf reads a task's position.
+func positionOf(task hmntsk.Task) position {
+	return position{Priority: task.Priority, DueAt: task.DueAt, ID: task.ID}
+}
+
+// compare orders two positions under a query's ordering and direction. The
+// direction reverses the whole key except where a task without a deadline
+// sorts, which is last either way: having no deadline is the least pressing
+// thing a due date can say.
+func compare(a, b position, query hmntsk.Query) int {
+	directed := func(c int) int {
 		if query.Descending {
-			beyond = task.ID.String() < query.Cursor
+			return -c
 		}
 
-		if beyond {
-			return tasks[i:]
+		return c
+	}
+
+	if query.OrderBy == hmntsk.OrderPriority || query.OrderBy == hmntsk.OrderUrgency {
+		if c := cmp.Compare(a.Priority, b.Priority); c != 0 {
+			return directed(c)
 		}
 	}
 
-	return nil
+	if query.OrderBy == hmntsk.OrderDue || query.OrderBy == hmntsk.OrderUrgency {
+		switch {
+		case a.DueAt == nil && b.DueAt != nil:
+			return 1
+		case a.DueAt != nil && b.DueAt == nil:
+			return -1
+		case a.DueAt != nil:
+			if c := a.DueAt.Compare(*b.DueAt); c != 0 {
+				return directed(c)
+			}
+		}
+	}
+
+	return directed(strings.Compare(string(a.ID), string(b.ID)))
+}
+
+// cursor is a continuation token: the ordering and direction that produced it,
+// and the position of the last task returned.
+type cursor struct {
+	Ordering   hmntsk.Ordering `json:"o"`
+	Descending bool            `json:"d"`
+	After      position        `json:"k"`
+}
+
+// encodeCursor renders the token that continues a query after a position.
+func encodeCursor(query hmntsk.Query, after position) string {
+	encoded, err := json.Marshal(cursor{Ordering: query.OrderBy, Descending: query.Descending, After: after})
+	if err != nil {
+		// Every field is a string, an integer or a time: there is nothing here
+		// that can fail to marshal.
+		panic("memstore: encode a cursor: " + err.Error())
+	}
+
+	return base64.RawURLEncoding.EncodeToString(encoded)
+}
+
+// decodeCursor reads a query's continuation token. A token this store did not
+// issue, or one issued for another ordering or direction, is a validation error:
+// reading it anyway would page through the wrong sequence without saying so.
+func decodeCursor(query hmntsk.Query) (position, error) {
+	var decoded cursor
+
+	raw, err := base64.RawURLEncoding.DecodeString(query.Cursor)
+	if err == nil {
+		err = json.Unmarshal(raw, &decoded)
+	}
+
+	switch {
+	case err != nil || decoded.After.ID == "":
+		return position{}, invalidCursor("it was not issued by this store")
+	case decoded.Ordering != query.OrderBy || decoded.Descending != query.Descending:
+		return position{}, invalidCursor("it continues a different ordering or direction")
+	default:
+		return decoded.After, nil
+	}
+}
+
+// invalidCursor reports a continuation token that cannot continue the query.
+func invalidCursor(reason string) error {
+	return &hmntsk.ValidationError{Subject: "request", Issues: []hmntsk.ValidationIssue{{
+		Detail: "the cursor is not valid: " + reason,
+	}}}
 }
 
 // matches reports whether a task satisfies every filter in the query.
@@ -417,6 +536,12 @@ func matches(task hmntsk.Task, query hmntsk.ResolvedQuery) bool {
 	}
 
 	if query.ActivityKey != "" && task.Correlation.ActivityKey != query.ActivityKey {
+		return false
+	}
+
+	// A group's queue is the pool as configured: no membership is resolved and
+	// no exclusion applies, because a queue has no actor to apply one to.
+	if query.Group != "" && !slices.Contains(task.Candidates.Groups, query.Group) {
 		return false
 	}
 

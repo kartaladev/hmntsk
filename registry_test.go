@@ -42,6 +42,11 @@ func approvalSpec() hmntsk.TypeSpec {
 			Action: hmntsk.EscalationWiden, AddGroups: []string{"managers"},
 		},
 		DefaultAssignment: hmntsk.CandidatePool{Groups: []string{"finance-approvers"}},
+		Metadata: map[string]string{
+			hmntsk.MetadataFormKey: "approval-form",
+			hmntsk.MetadataRoute:   "/invoices/{correlation.ownerRef}/approve?task={task.id}",
+			"acme.icon":            "receipt",
+		},
 	}
 }
 
@@ -73,6 +78,8 @@ func TestRegistryLookup(t *testing.T) {
 					"the schemas must come back as supplied at registration")
 				assert.JSONEq(t, approvalOutputSchema, string(spec.OutputSchema))
 				assert.Equal(t, 24*time.Hour, spec.DefaultDeadline)
+				assert.Equal(t, approvalSpec().Metadata, spec.Metadata,
+					"metadata comes back exactly as registered, host keys beside the well-known ones")
 			},
 		},
 		{
@@ -192,6 +199,36 @@ func TestRegistryRegisterConflicts(t *testing.T) {
 			}(),
 			assert: rejected,
 		},
+		{
+			name: "a differing metadata value is rejected",
+			second: func() hmntsk.TypeSpec {
+				spec := approvalSpec()
+				spec.Metadata[hmntsk.MetadataFormKey] = "another-form"
+
+				return spec
+			}(),
+			assert: rejected,
+		},
+		{
+			name: "metadata dropped from a re-registration is rejected",
+			second: func() hmntsk.TypeSpec {
+				spec := approvalSpec()
+				spec.Metadata = nil
+
+				return spec
+			}(),
+			assert: rejected,
+		},
+		{
+			name: "an extra host key is rejected",
+			second: func() hmntsk.TypeSpec {
+				spec := approvalSpec()
+				spec.Metadata["acme.colour"] = "amber"
+
+				return spec
+			}(),
+			assert: rejected,
+		},
 	}
 
 	for _, tc := range cases {
@@ -200,6 +237,73 @@ func TestRegistryRegisterConflicts(t *testing.T) {
 
 			registry := registryWithApproval(t)
 			tc.assert(t, registry, registry.Register(tc.second))
+		})
+	}
+}
+
+func TestTypeSpecCloneCopiesMetadata(t *testing.T) {
+	t.Parallel()
+
+	original := approvalSpec()
+
+	clone := original.Clone()
+	clone.Metadata[hmntsk.MetadataFormKey] = "tampered"
+
+	assert.Equal(t, "approval-form", original.Metadata[hmntsk.MetadataFormKey],
+		"a clone must not share its metadata with the original")
+}
+
+func TestTypeSpecMetadataJSON(t *testing.T) {
+	t.Parallel()
+
+	type testCase struct {
+		name   string
+		spec   hmntsk.TypeSpec
+		assert func(t *testing.T, encoded []byte, err error)
+	}
+
+	omitted := func(t *testing.T, encoded []byte, err error) {
+		require.NoError(t, err)
+		assert.NotContains(t, string(encoded), "etadata", "a type without metadata carries no metadata field")
+	}
+
+	cases := []testCase{
+		{
+			name: "metadata is encoded under metadata and decodes unchanged",
+			spec: approvalSpec(),
+			assert: func(t *testing.T, encoded []byte, err error) {
+				require.NoError(t, err)
+
+				var fields map[string]json.RawMessage
+
+				require.NoError(t, json.Unmarshal(encoded, &fields))
+				require.Contains(t, fields, "metadata")
+
+				var decoded hmntsk.TypeSpec
+
+				require.NoError(t, json.Unmarshal(encoded, &decoded))
+				assert.Equal(t, approvalSpec().Metadata, decoded.Metadata)
+				assert.True(t, approvalSpec().Equal(decoded))
+			},
+		},
+		{
+			name:   "no metadata is omitted",
+			spec:   hmntsk.TypeSpec{Name: "freeform"},
+			assert: omitted,
+		},
+		{
+			name:   "empty metadata is omitted",
+			spec:   hmntsk.TypeSpec{Name: "freeform", Metadata: map[string]string{}},
+			assert: omitted,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			encoded, err := json.Marshal(tc.spec)
+			tc.assert(t, encoded, err)
 		})
 	}
 }

@@ -375,9 +375,26 @@ func (s *Store) History(ctx context.Context, id hmntsk.TaskID) ([]hmntsk.Transit
 	return records, err
 }
 
+// Count implements [hmntsk.Repository].
+func (s *Store) Count(ctx context.Context, query hmntsk.ResolvedQuery) (int64, error) {
+	rows, err := s.query(ctx, s.builder.CountTasks(query))
+	if err != nil {
+		return 0, err
+	}
+
+	defer rows.Close()
+
+	return sqlcore.ScanCount(rows)
+}
+
 // Query implements [hmntsk.Repository].
 func (s *Store) Query(ctx context.Context, query hmntsk.ResolvedQuery) (hmntsk.Page, error) {
-	rows, err := s.query(ctx, s.builder.QueryTasks(query))
+	statement, err := s.builder.QueryTasks(query)
+	if err != nil {
+		return hmntsk.Page{}, err
+	}
+
+	rows, err := s.query(ctx, statement)
 	if err != nil {
 		return hmntsk.Page{}, err
 	}
@@ -394,7 +411,7 @@ func (s *Store) Query(ctx context.Context, query hmntsk.ResolvedQuery) (hmntsk.P
 
 	if limit := query.EffectiveLimit(); len(tasks) > limit {
 		tasks = tasks[:limit]
-		page.NextCursor = tasks[len(tasks)-1].ID.String()
+		page.NextCursor = s.builder.NextCursor(query.Query, tasks[len(tasks)-1])
 	}
 
 	if err := s.attachCandidates(ctx, tasks); err != nil {

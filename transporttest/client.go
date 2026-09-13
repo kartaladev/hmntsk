@@ -22,11 +22,13 @@ type Client struct {
 	http     *http.Client
 }
 
-// NewClient starts the binding and returns a client for it.
-func NewClient(t *testing.T, mount Mount) (*Client, *transportcore.API) {
+// NewClient starts the binding over a fresh engine and returns a client for it.
+// Options configure the contract, such as its query authorization policy; with
+// none, the contract's defaults apply.
+func NewClient(t *testing.T, mount Mount, opts ...transportcore.Option) (*Client, *transportcore.API) {
 	t.Helper()
 
-	api := NewAPI(t)
+	api := NewAPI(t, opts...)
 	binding := mount(t, api)
 
 	require.NotEmpty(t, binding.BaseURL, "a binding must say where it is reachable")

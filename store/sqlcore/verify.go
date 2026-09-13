@@ -3,6 +3,8 @@ package sqlcore
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 
@@ -91,10 +93,7 @@ func (e *SchemaError) Unwrap() error { return hmntsk.ErrConfiguration }
 func (b *Builder) SchemaQuery() Statement {
 	s := b.begin()
 
-	tables := make([]any, 0, 5)
-	for _, table := range b.Tables() {
-		tables = append(tables, table)
-	}
+	tables := b.tableArgs()
 
 	switch b.dialect.Name() {
 	case "postgres":
@@ -122,8 +121,9 @@ func (b *Builder) SchemaQuery() Statement {
 // VerifySchema compares the live schema against what the engine's statements
 // require, and reports every discrepancy rather than failing on first use.
 //
-// It checks that every table and column exists and that the identifier columns
-// carry the collation that makes comparison case-sensitive. It does not check
+// It checks that every table and column exists, that the identifier columns
+// carry the collation that makes comparison case-sensitive, and that every
+// index the engine's statements rely on exists, by name. It does not check
 // column types: a dialect has several spellings for the same storage, and a
 // type mismatch that matters shows up as a failing statement immediately, while
 // a wrong collation shows up months later as the wrong person claiming a task.
@@ -140,7 +140,19 @@ func (b *Builder) VerifySchema(ctx context.Context, querier Querier) error {
 		return err
 	}
 
-	issues := b.compareSchema(observed)
+	indexStatement := b.IndexQuery()
+
+	indexRows, err := querier.QueryStatement(ctx, indexStatement.SQL, indexStatement.Args...)
+	if err != nil {
+		return fmt.Errorf("hmntsk: read the live indexes: %w", err)
+	}
+
+	indexes, err := scanIndexes(indexRows)
+	if err != nil {
+		return err
+	}
+
+	issues := append(b.compareSchema(observed), b.compareIndexes(observed, indexes)...)
 	if len(issues) == 0 {
 		return nil
 	}
@@ -243,6 +255,125 @@ func (b *Builder) compareSchema(observed map[string]map[string]observedColumn) [
 					found.collation, wantCollation,
 				),
 			})
+		}
+	}
+
+	return issues
+}
+
+// IndexQuery renders the introspection of the indexes on the engine's tables:
+// one row per index, as (table, index).
+func (b *Builder) IndexQuery() Statement {
+	s := b.begin()
+
+	tables := b.tableArgs()
+
+	switch b.dialect.Name() {
+	case "postgres":
+		s.write("SELECT tablename, indexname FROM pg_indexes ")
+		s.write("WHERE schemaname = current_schema() AND tablename IN (", s.bindAll(tables...), ")")
+	case "mysql":
+		// STATISTICS has one row per indexed column, hence DISTINCT.
+		s.write("SELECT DISTINCT TABLE_NAME, INDEX_NAME FROM information_schema.STATISTICS ")
+		s.write("WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN (", s.bindAll(tables...), ")")
+	default:
+		s.write("SELECT tbl_name, name FROM sqlite_master ")
+		s.write("WHERE type = 'index' AND tbl_name IN (", s.bindAll(tables...), ")")
+	}
+
+	return s.done()
+}
+
+// Indexes returns the indexes [Builder.VerifySchema] requires, prefixed, in
+// table creation order. Every one of them is created by the published DDL of
+// every dialect.
+func (b *Builder) Indexes() []string {
+	var indexes []string
+
+	for _, table := range tableOrder {
+		for _, index := range expectedIndexes[table] {
+			indexes = append(indexes, b.TableName(index))
+		}
+	}
+
+	return indexes
+}
+
+// expectedIndexes lists, per table, the secondary indexes the engine's
+// statements rely on. Primary keys are not listed: every dialect names them
+// differently, and a table without one is not a table the published DDL made.
+//
+// An index is required by name, not by its columns. A missing index does not
+// make a statement fail; it makes the statement read the whole table, which is
+// found in production rather than at startup unless something looks for it.
+var expectedIndexes = map[string][]string{
+	TasksTable: {
+		"tasks_assignee_idx", "tasks_status_idx", "tasks_type_idx", "tasks_correlation_idx",
+		// The escalation sweep's: it filters overdue tasks by status.
+		"tasks_due_idx",
+		// The inbox orderings'.
+		"tasks_priority_idx", "tasks_due_order_idx", "tasks_urgency_idx",
+	},
+	CandidatesTable: {"task_candidates_lookup_idx"},
+	OutboxTable:     {"task_outbox_unpublished_idx", "task_outbox_due_idx"},
+}
+
+// scanIndexes reads the index introspection rows into a table-and-index set.
+func scanIndexes(rows Rows) (map[string]map[string]bool, error) {
+	observed := make(map[string]map[string]bool)
+
+	var table, index any
+
+	for rows.Next() {
+		if err := rows.Scan(&table, &index); err != nil {
+			return nil, fmt.Errorf("hmntsk: scan index row: %w", err)
+		}
+
+		tableName, err := DecodeString(table)
+		if err != nil {
+			return nil, err
+		}
+
+		indexName, err := DecodeString(index)
+		if err != nil {
+			return nil, err
+		}
+
+		if observed[tableName] == nil {
+			observed[tableName] = make(map[string]bool)
+		}
+
+		observed[tableName][indexName] = true
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("hmntsk: read index rows: %w", err)
+	}
+
+	return observed, nil
+}
+
+// compareIndexes produces one issue per missing index, in a stable order. A
+// table that is missing altogether is already reported, and its indexes are not
+// reported again.
+func (b *Builder) compareIndexes(
+	columns map[string]map[string]observedColumn, indexes map[string]map[string]bool,
+) []SchemaIssue {
+	var issues []SchemaIssue
+
+	for _, table := range slices.Sorted(maps.Keys(expectedIndexes)) {
+		prefixed := b.TableName(table)
+
+		if _, present := columns[prefixed]; !present {
+			continue
+		}
+
+		for _, index := range expectedIndexes[table] {
+			name := b.TableName(index)
+
+			if !indexes[prefixed][name] {
+				issues = append(issues, SchemaIssue{Table: prefixed, Detail: "index " + name + " is missing"})
+			}
 		}
 	}
 

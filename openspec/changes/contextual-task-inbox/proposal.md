@@ -18,6 +18,7 @@ Each item states the default behaviour and how the consumer overrides it.
   - Paging stays exact under every ordering: no task is repeated or skipped across pages, and results are identical on PostgreSQL, MySQL and SQLite.
   - Orderings are limited to indexed keys. That limit is documented, not relaxed.
   - `Page.NextCursor` stays opaque. Its encoding changes, which no caller relies on.
+  - **BREAKING (unreleased):** over HTTP the direction is `direction=asc|desc`, beside `orderBy`. It replaces the earlier `order=asc|desc` parameter, which is removed rather than kept as a second spelling.
 - **Counts.** `Service.Count(ctx, Query)` returns how many tasks a query matches, with the same filters as `Query`. `Service.CountBuckets(ctx, map[string]Query)` returns every badge for a set of host-defined buckets in one call. HTTP adds `GET /tasks/count`.
 - **Group buckets.** `Query.Group` selects tasks whose candidate pool names that group, for a supervisor's team queue. It combines with every other filter.
 - **Task type metadata.** `TypeSpec.Metadata` is a `map[string]string` the engine stores and returns and never interprets. It is served by `/task-types`. Well-known keys are defined as documented constants:

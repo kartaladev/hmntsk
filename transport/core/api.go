@@ -3,6 +3,7 @@ package transportcore
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -20,8 +21,9 @@ const DefaultBasePath = "/v1"
 
 // API is the REST contract over an engine.
 type API struct {
-	service  *hmntsk.Service
-	basePath string
+	service    *hmntsk.Service
+	basePath   string
+	authorizer QueryAuthorizer
 }
 
 // Option configures an [API].
@@ -38,15 +40,26 @@ func WithBasePath(path string) Option {
 }
 
 // New returns the contract over an engine.
+//
+// With no options it serves under [DefaultBasePath] and authorizes queries with
+// [SelfOnly], so an actor may read only their own inbox. A contradictory or
+// empty option, such as a nil query policy, is a configuration error here,
+// before any traffic.
 func New(service *hmntsk.Service, opts ...Option) (*API, error) {
 	if service == nil {
 		return nil, &hmntsk.ConfigurationError{Detail: "a service is required to serve the API"}
 	}
 
-	api := &API{service: service, basePath: DefaultBasePath}
+	api := &API{service: service, basePath: DefaultBasePath, authorizer: SelfOnly}
 
 	for _, opt := range opts {
 		opt(api)
+	}
+
+	if api.authorizer == nil {
+		return nil, &hmntsk.ConfigurationError{
+			Detail: "WithQueryAuthorizer was given no policy; pass transportcore.AllowAll to permit every query",
+		}
 	}
 
 	return api, nil
@@ -72,8 +85,16 @@ func (a *API) Routes() []Route {
 		},
 		{
 			Method: "GET", Pattern: a.path("/tasks"),
-			OperationID: "queryTasks", Summary: "Query tasks by assignee, eligibility, status, type or correlation.",
-			Handler: a.queryTasks,
+			OperationID: "queryTasks",
+			Summary:     "Query tasks by assignee, eligibility, group, status, type or correlation, in a supported ordering.",
+			Handler:     a.queryTasks,
+		},
+		{
+			// Before /tasks/{id}, so that a router matching in registration
+			// order does not read "count" as a task identifier.
+			Method: "GET", Pattern: a.path("/tasks/count"),
+			OperationID: "countTasks", Summary: "Count the tasks a query matches, such as for an inbox badge.",
+			Handler: a.countTasks,
 		},
 		{
 			Method: "GET", Pattern: a.path("/tasks/{id}"),
@@ -227,7 +248,7 @@ func (a *API) getHistory(ctx context.Context, req Request) Response {
 
 // queryTasks answers GET /tasks.
 func (a *API) queryTasks(ctx context.Context, req Request) Response {
-	query, err := parseQuery(req)
+	query, err := a.authorizedQuery(ctx, req)
 	if err != nil {
 		return fail(err)
 	}
@@ -243,6 +264,53 @@ func (a *API) queryTasks(ctx context.Context, req Request) Response {
 	}
 
 	return encode(StatusOK, PageResponse{Tasks: tasks, NextCursor: page.NextCursor})
+}
+
+// countTasks answers GET /tasks/count.
+func (a *API) countTasks(ctx context.Context, req Request) Response {
+	query, err := a.authorizedQuery(ctx, req)
+	if err != nil {
+		return fail(err)
+	}
+
+	count, err := a.service.Count(ctx, query)
+	if err != nil {
+		return fail(err)
+	}
+
+	return encode(StatusOK, CountResponse{Count: count})
+}
+
+// authorizedQuery turns a query request into the query the engine runs, in the
+// order the contract promises: parse it, resolve [Me] against the acting user,
+// then ask the policy. A malformed request is a 400 before anyone is asked
+// whether it may run, and the policy always sees the actor a query names rather
+// than the word me.
+func (a *API) authorizedQuery(ctx context.Context, req Request) (hmntsk.Query, error) {
+	query, err := parseQuery(req)
+	if err != nil {
+		return hmntsk.Query{}, err
+	}
+
+	for _, named := range []*string{&query.Candidate, &query.Assignee} {
+		if *named != Me {
+			continue
+		}
+
+		if req.Actor == "" {
+			return hmntsk.Query{}, &queryRefusedError{
+				cause: errors.New("the query names me, but no acting user is established"),
+			}
+		}
+
+		*named = req.Actor
+	}
+
+	if err := a.authorizer.AuthorizeQuery(ctx, req.Actor, query); err != nil {
+		return hmntsk.Query{}, &queryRefusedError{cause: err}
+	}
+
+	return query, nil
 }
 
 // listTaskTypes answers GET /task-types.
@@ -367,8 +435,23 @@ func parseQuery(req Request) (hmntsk.Query, error) {
 		OwnerType:   req.QueryValue("ownerType"),
 		OwnerRef:    req.QueryValue("ownerRef"),
 		ActivityKey: req.QueryValue("activityKey"),
+		Group:       req.QueryValue("group"),
 		Cursor:      req.QueryValue("cursor"),
-		Descending:  req.QueryValue("order") == "desc",
+	}
+
+	ordering, ok := parseOrdering(req.QueryValue("orderBy"))
+	if !ok {
+		return hmntsk.Query{}, badRequest("orderBy", "must be one of created, priority, due or urgency")
+	}
+
+	query.OrderBy = ordering
+
+	switch req.QueryValue("direction") {
+	case "", "asc":
+	case "desc":
+		query.Descending = true
+	default:
+		return hmntsk.Query{}, badRequest("direction", "must be asc or desc")
 	}
 
 	for _, status := range req.QueryValues("status") {
@@ -399,6 +482,19 @@ func parseQuery(req Request) (hmntsk.Query, error) {
 	}
 
 	return query, nil
+}
+
+// parseOrdering reads the orderBy parameter. Creation order is spelled created
+// on the wire, and is also what an absent parameter means.
+func parseOrdering(value string) (hmntsk.Ordering, bool) {
+	switch value {
+	case "", "created":
+		return hmntsk.OrderCreated, true
+	case string(hmntsk.OrderPriority), string(hmntsk.OrderDue), string(hmntsk.OrderUrgency):
+		return hmntsk.Ordering(value), true
+	default:
+		return "", false
+	}
 }
 
 // decode reads a request body, treating an absent one as an empty object so

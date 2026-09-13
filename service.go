@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"maps"
+	"slices"
 	"time"
 )
 
@@ -456,26 +459,118 @@ func (s *Service) SaveProgress(ctx context.Context, req SaveProgressRequest) (Re
 // Query returns a page of tasks. When the query names a candidate, their group
 // membership is resolved here, so that no store adapter needs a directory of
 // its own.
+//
+// An ordering outside the supported set is a validation error.
 func (s *Service) Query(ctx context.Context, query Query) (Page, error) {
-	resolved := ResolvedQuery{Query: query.Clone()}
-
-	if query.Candidate != "" {
-		if s.resolver == nil {
-			return Page{}, &GroupResolutionError{
-				Actor: query.Candidate,
-				Cause: &ConfigurationError{Detail: "no group resolver is configured"},
-			}
-		}
-
-		groups, err := s.resolver.GroupsOf(ctx, query.Candidate)
-		if err != nil {
-			return Page{}, &GroupResolutionError{Actor: query.Candidate, Cause: err}
-		}
-
-		resolved.CandidateGroups = groups
+	resolved, err := s.resolve(ctx, query, nil)
+	if err != nil {
+		return Page{}, err
 	}
 
 	return s.store.Query(ctx, resolved)
+}
+
+// MaxCountBuckets is the most buckets one [Service.CountBuckets] call counts. It
+// stops an unbounded row of badges from issuing an unbounded number of queries.
+// A host needing more calls [Service.Count] for each bucket itself.
+const MaxCountBuckets = 32
+
+// Count returns how many tasks a query matches. It applies every filter
+// [Service.Query] applies, eligibility included, and ignores the ordering, the
+// page size and the cursor. Each task is counted once.
+func (s *Service) Count(ctx context.Context, query Query) (int64, error) {
+	resolved, err := s.resolve(ctx, query, nil)
+	if err != nil {
+		return 0, err
+	}
+
+	return s.store.Count(ctx, resolved)
+}
+
+// CountBuckets counts a set of host-named queries, such as the badges of an
+// inbox, and returns one count per name. Each count equals [Service.Count] of
+// that bucket's query alone.
+//
+// Each distinct candidate's groups are resolved once for the whole call. The
+// counts run on the context given, so inside a host transaction they read the
+// same state and agree with each other.
+//
+// More than [MaxCountBuckets] buckets, or any bucket with an unsupported
+// ordering, is a validation error, and nothing is counted.
+func (s *Service) CountBuckets(ctx context.Context, buckets map[string]Query) (map[string]int64, error) {
+	if len(buckets) > MaxCountBuckets {
+		return nil, &ValidationError{Subject: "request", Issues: []ValidationIssue{{
+			Detail: fmt.Sprintf("%d buckets exceed the limit of %d", len(buckets), MaxCountBuckets),
+		}}}
+	}
+
+	names := slices.Sorted(maps.Keys(buckets))
+
+	for _, name := range names {
+		if err := buckets[name].validate(); err != nil {
+			return nil, err
+		}
+	}
+
+	groups := make(map[string][]string)
+	counts := make(map[string]int64, len(buckets))
+
+	for _, name := range names {
+		resolved, err := s.resolve(ctx, buckets[name], groups)
+		if err != nil {
+			return nil, err
+		}
+
+		count, err := s.store.Count(ctx, resolved)
+		if err != nil {
+			return nil, err
+		}
+
+		counts[name] = count
+	}
+
+	return counts, nil
+}
+
+// resolve validates a query and resolves its candidate's group membership. A
+// non-nil cache holds memberships already resolved, and gains the ones this
+// call resolves.
+func (s *Service) resolve(ctx context.Context, query Query, cache map[string][]string) (ResolvedQuery, error) {
+	if err := query.validate(); err != nil {
+		return ResolvedQuery{}, err
+	}
+
+	resolved := ResolvedQuery{Query: query.Clone()}
+
+	if query.Candidate == "" {
+		return resolved, nil
+	}
+
+	if groups, ok := cache[query.Candidate]; ok {
+		resolved.CandidateGroups = groups
+
+		return resolved, nil
+	}
+
+	if s.resolver == nil {
+		return ResolvedQuery{}, &GroupResolutionError{
+			Actor: query.Candidate,
+			Cause: &ConfigurationError{Detail: "no group resolver is configured"},
+		}
+	}
+
+	groups, err := s.resolver.GroupsOf(ctx, query.Candidate)
+	if err != nil {
+		return ResolvedQuery{}, &GroupResolutionError{Actor: query.Candidate, Cause: err}
+	}
+
+	if cache != nil {
+		cache[query.Candidate] = groups
+	}
+
+	resolved.CandidateGroups = groups
+
+	return resolved, nil
 }
 
 // mutate is the pipeline every lifecycle operation runs: join the host's

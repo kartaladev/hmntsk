@@ -96,7 +96,8 @@ CREATE TABLE IF NOT EXISTS "{{PREFIX}}task_types" (
     "default_deadline_ms" INTEGER NOT NULL DEFAULT 0,
     "default_escalation"  TEXT,
     "default_assignment"  TEXT,
-    "updated_at"          TEXT NOT NULL
+    "updated_at"          TEXT NOT NULL,
+    "metadata"            TEXT
 );
 
 CREATE INDEX IF NOT EXISTS "{{PREFIX}}tasks_assignee_idx" ON "{{PREFIX}}tasks" ("assignee", "id");
@@ -104,6 +105,9 @@ CREATE INDEX IF NOT EXISTS "{{PREFIX}}tasks_status_idx" ON "{{PREFIX}}tasks" ("s
 CREATE INDEX IF NOT EXISTS "{{PREFIX}}tasks_type_idx" ON "{{PREFIX}}tasks" ("task_type", "id");
 CREATE INDEX IF NOT EXISTS "{{PREFIX}}tasks_correlation_idx" ON "{{PREFIX}}tasks" ("owner_type", "owner_ref", "activity_key");
 CREATE INDEX IF NOT EXISTS "{{PREFIX}}tasks_due_idx" ON "{{PREFIX}}tasks" ("due_at", "status");
+CREATE INDEX IF NOT EXISTS "{{PREFIX}}tasks_priority_idx" ON "{{PREFIX}}tasks" ("priority", "id");
+CREATE INDEX IF NOT EXISTS "{{PREFIX}}tasks_due_order_idx" ON "{{PREFIX}}tasks" ("due_at", "id");
+CREATE INDEX IF NOT EXISTS "{{PREFIX}}tasks_urgency_idx" ON "{{PREFIX}}tasks" ("priority", "due_at", "id");
 CREATE INDEX IF NOT EXISTS "{{PREFIX}}task_candidates_lookup_idx" ON "{{PREFIX}}task_candidates" ("kind", "value", "task_id");
 CREATE INDEX IF NOT EXISTS "{{PREFIX}}task_outbox_unpublished_idx" ON "{{PREFIX}}task_outbox" ("published_at", "occurred_at", "id");
 CREATE INDEX IF NOT EXISTS "{{PREFIX}}task_outbox_due_idx" ON "{{PREFIX}}task_outbox" ("published_at", "next_attempt_at", "occurred_at", "id");

@@ -388,6 +388,25 @@ func TestPlaceholdersAppearInArgumentOrder(t *testing.T) {
 	claim := hmntsk.OutboxClaim{Now: reference, Owner: "relay-1", Duration: time.Minute, Limit: 10}
 
 	build := func(b *sqlcore.Builder) map[string]sqlcore.Statement {
+		// The fullest query the builder renders: every filter, the widest
+		// ordering key, and a cursor to continue it, so the keyset predicate's
+		// bindings are checked alongside everything else's.
+		last := task
+		last.DueAt = &reference
+
+		full := hmntsk.ResolvedQuery{
+			Query: hmntsk.Query{
+				Assignee: "alice", Candidate: "alice", Group: "finance-approvers", Limit: 10,
+				Statuses:  []hmntsk.Status{hmntsk.StatusReady, hmntsk.StatusReserved},
+				Types:     []string{"approval", "review"},
+				OwnerType: "process", OwnerRef: "p-1", ActivityKey: "approve",
+				DueBefore: &reference,
+				OrderBy:   hmntsk.OrderUrgency, Descending: true,
+			},
+			CandidateGroups: []string{"finance-approvers", "managers"},
+		}
+		full.Cursor = b.NextCursor(full.Query, last)
+
 		return map[string]sqlcore.Statement{
 			"InsertTask":        b.InsertTask(task),
 			"UpdateTask":        b.UpdateTask(task, 3),
@@ -427,27 +446,19 @@ func TestPlaceholdersAppearInArgumentOrder(t *testing.T) {
 				EventID: "e-1", Attempts: 5, LastError: "400",
 				Accepted: []string{"webhook"},
 			}),
-			"SelectOverdue": b.SelectOverdue(lease),
-			"ClaimLease":    b.ClaimLease(task.ID, lease),
-			"ReleaseLease":  b.ReleaseLease(task.ID, "sweeper-1"),
-			"UpsertType":    b.UpsertType(hmntsk.TypeSpec{Name: "approval"}, reference),
-			"SelectType":    b.SelectType("approval"),
-			"SelectTypes":   b.SelectTypes(),
-			"DeleteType":    b.DeleteType("approval"),
-			"SchemaQuery":   b.SchemaQuery(),
-			"QueryTasksFull": b.QueryTasks(hmntsk.ResolvedQuery{
-				Query: hmntsk.Query{
-					Assignee: "alice", Candidate: "alice", Cursor: "task-0", Limit: 10,
-					Statuses:  []hmntsk.Status{hmntsk.StatusReady, hmntsk.StatusReserved},
-					Types:     []string{"approval", "review"},
-					OwnerType: "process", OwnerRef: "p-1", ActivityKey: "approve",
-					DueBefore: &reference,
-				},
-				CandidateGroups: []string{"finance-approvers", "managers"},
-			}),
-			"QueryTasksCandidateOnly": b.QueryTasks(hmntsk.ResolvedQuery{
+			"SelectOverdue":  b.SelectOverdue(lease),
+			"ClaimLease":     b.ClaimLease(task.ID, lease),
+			"ReleaseLease":   b.ReleaseLease(task.ID, "sweeper-1"),
+			"UpsertType":     b.UpsertType(hmntsk.TypeSpec{Name: "approval"}, reference),
+			"SelectType":     b.SelectType("approval"),
+			"SelectTypes":    b.SelectTypes(),
+			"DeleteType":     b.DeleteType("approval"),
+			"SchemaQuery":    b.SchemaQuery(),
+			"QueryTasksFull": mustStatement(t)(b.QueryTasks(full)),
+			"QueryTasksCandidateOnly": mustStatement(t)(b.QueryTasks(hmntsk.ResolvedQuery{
 				Query: hmntsk.Query{Candidate: "alice"},
-			}),
+			})),
+			"CountTasksFull": b.CountTasks(full),
 		}
 	}
 

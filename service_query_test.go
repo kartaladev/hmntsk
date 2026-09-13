@@ -81,6 +81,14 @@ func TestServiceQueryFilters(t *testing.T) {
 			},
 		},
 		{
+			name:  "an unsupported ordering is a validation error, never a fallback",
+			query: hmntsk.Query{OrderBy: "bogus"},
+			assert: func(t *testing.T, page hmntsk.Page, err error) {
+				require.ErrorIs(t, err, hmntsk.ErrValidation)
+				assert.Empty(t, page.Tasks)
+			},
+		},
+		{
 			name:  "an assignee filter distinguishes held work from claimable work",
 			query: hmntsk.Query{Assignee: "alice"},
 			assert: func(t *testing.T, page hmntsk.Page, err error) {

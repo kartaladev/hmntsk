@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -25,6 +26,7 @@ func componentSchemas() (map[string]any, error) {
 		"OperationRequest":     OperationRequest{},
 		"Task":                 hmntsk.Task{},
 		"PageResponse":         PageResponse{},
+		"CountResponse":        CountResponse{},
 		"HistoryResponse":      HistoryResponse{},
 		"TaskTypeResponse":     TaskTypeResponse{},
 		"TaskTypeListResponse": TaskTypeListResponse{},
@@ -66,7 +68,11 @@ var responseShapes = map[string]responseShape{
 	},
 	"queryTasks": {
 		success: StatusOK, successSchema: "PageResponse",
-		failures: []int{StatusBadRequest, StatusInternalServerError},
+		failures: []int{StatusBadRequest, StatusForbidden, StatusInternalServerError},
+	},
+	"countTasks": {
+		success: StatusOK, successSchema: "CountResponse",
+		failures: []int{StatusBadRequest, StatusForbidden, StatusInternalServerError},
 	},
 	"getTask": {
 		success: StatusOK, successSchema: "Task",
@@ -98,7 +104,7 @@ var statusDescriptions = map[int]string{
 	StatusOK:                  "The operation succeeded.",
 	StatusCreated:             "The task was created.",
 	StatusBadRequest:          "The request or its payload failed validation, or named a task type that is not registered.",
-	StatusForbidden:           "The acting actor is not eligible for the task, or is not its assignee.",
+	StatusForbidden:           "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox.",
 	StatusNotFound:            "No such task, task type or route.",
 	StatusConflict:            "The task has moved on since the version the caller observed, or the operation is not legal from its present state. The body carries the current version.",
 	StatusInternalServerError: "The request could not be completed. A failure to resolve group membership lands here rather than on 403: the engine could not decide, which is not the same as deciding against the caller.",
@@ -172,7 +178,8 @@ func operationObject(route Route) map[string]any {
 }
 
 // parameterObjects renders a route's path parameters, plus the query
-// parameters the inbox accepts.
+// parameters the inbox accepts. A count takes the query's filters and none of
+// its paging or ordering.
 func parameterObjects(route Route) []any {
 	params := make([]any, 0, 4)
 
@@ -185,27 +192,16 @@ func parameterObjects(route Route) []any {
 		})
 	}
 
-	if route.OperationID != "queryTasks" {
+	if route.OperationID != "queryTasks" && route.OperationID != "countTasks" {
 		return params
 	}
 
-	for _, query := range []struct {
-		name        string
-		schema      map[string]any
-		description string
-	}{
-		{"assignee", map[string]any{"type": "string"}, "Tasks reserved for this actor."},
-		{"candidate", map[string]any{"type": "string"}, "Tasks this actor may act on, with group membership resolved now."},
-		{"status", map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, "Restrict to these lifecycle states."},
-		{"type", map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, "Restrict to these task types."},
-		{"ownerType", map[string]any{"type": "string"}, "Correlation: the kind of thing that owns the task."},
-		{"ownerRef", map[string]any{"type": "string"}, "Correlation: the owning unit of work."},
-		{"activityKey", map[string]any{"type": "string"}, "Correlation: the step the task stands for."},
-		{"dueBefore", map[string]any{"type": "string", "format": "date-time"}, "Tasks due strictly before this instant."},
-		{"limit", map[string]any{"type": "integer"}, "Page size."},
-		{"cursor", map[string]any{"type": "string"}, "Continue a previous page."},
-		{"order", map[string]any{"type": "string", "enum": []any{"asc", "desc"}}, "Ordering by task identifier."},
-	} {
+	queries := filterParams
+	if route.OperationID == "queryTasks" {
+		queries = append(slices.Clip(filterParams), pagingParams...)
+	}
+
+	for _, query := range queries {
 		params = append(params, map[string]any{
 			"name":        query.name,
 			"in":          "query",
@@ -216,6 +212,35 @@ func parameterObjects(route Route) []any {
 	}
 
 	return params
+}
+
+// queryParam describes one query parameter of the inbox routes.
+type queryParam struct {
+	name        string
+	schema      map[string]any
+	description string
+}
+
+// filterParams are the parameters that choose which tasks match. A query and a
+// count both take them.
+var filterParams = []queryParam{
+	{"assignee", map[string]any{"type": "string"}, "Tasks reserved for this actor; `me` names the acting user."},
+	{"candidate", map[string]any{"type": "string"}, "Tasks this actor may act on, with group membership resolved now; `me` names the acting user."},
+	{"group", map[string]any{"type": "string"}, "Tasks whose candidate pool names this group, as configured: no membership is resolved."},
+	{"status", map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, "Restrict to these lifecycle states."},
+	{"type", map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, "Restrict to these task types."},
+	{"ownerType", map[string]any{"type": "string"}, "Correlation: the kind of thing that owns the task."},
+	{"ownerRef", map[string]any{"type": "string"}, "Correlation: the owning unit of work."},
+	{"activityKey", map[string]any{"type": "string"}, "Correlation: the step the task stands for."},
+	{"dueBefore", map[string]any{"type": "string", "format": "date-time"}, "Tasks due strictly before this instant."},
+}
+
+// pagingParams are the parameters that shape a page. Only a query takes them.
+var pagingParams = []queryParam{
+	{"limit", map[string]any{"type": "integer"}, "Page size."},
+	{"cursor", map[string]any{"type": "string"}, "Continue a previous page. It is bound to the ordering and direction that produced it."},
+	{"orderBy", map[string]any{"type": "string", "enum": []any{"created", "priority", "due", "urgency"}}, "The ordering: creation by default; urgency is priority, then due date, then creation."},
+	{"direction", map[string]any{"type": "string", "enum": []any{"asc", "desc"}}, "The direction of the ordering, asc by default. Tasks without a deadline sort last either way."},
 }
 
 // requestBodyFor renders the body a route accepts, and nil for one that takes

@@ -69,10 +69,11 @@ func TestQueryPlansAreServedByAnIndex(t *testing.T) {
 			seedForPlanning(t, store)
 			analyze(t, db, tc.dialect, prefix)
 
-			inbox := store.Builder().QueryTasks(hmntsk.ResolvedQuery{
+			inbox, err := store.Builder().QueryTasks(hmntsk.ResolvedQuery{
 				Query:           hmntsk.Query{Candidate: "alice", Limit: 25},
 				CandidateGroups: []string{"finance-approvers", "managers"},
 			})
+			require.NoError(t, err)
 
 			sweep := store.Builder().SelectOverdue(hmntsk.LeaseRequest{
 				Now: storetest.Reference, Owner: "sweeper-1", Duration: time.Minute, Limit: 25,

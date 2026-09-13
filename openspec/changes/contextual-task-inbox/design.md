@@ -78,7 +78,7 @@ The existing `tasks_due_idx (due_at, status)` stays, because the escalation swee
 
 ### D4. `Count` is a store method; `CountBuckets` is service composition
 
-- `Repository.Count(ctx, ResolvedQuery) (int64, error)` reuses the query builder's filter clauses under `COUNT(DISTINCT tasks.id)`. `DISTINCT` is needed because the candidate join can match a task through a user row and a group row at once. Order, limit and cursor are ignored.
+- `Repository.Count(ctx, ResolvedQuery) (int64, error)` reuses the query builder's filter clauses under `COUNT(*)`. A pool can reach an actor through a user row and a group row at once, but every candidate and group filter is an `EXISTS` over the candidate table, never a join, so a task matches once and no `DISTINCT` is needed; the shared store tests count such a task and require one. Order, limit and cursor are ignored.
 - `Service.Count(ctx, Query)` resolves groups exactly as `Service.Query` does.
 - `Service.CountBuckets(ctx, map[string]Query) (map[string]int64, error)` resolves each distinct candidate's groups **once**, then counts each bucket in turn. It runs inside the host's transaction when the context carries one, so the badges agree with each other.
 
@@ -152,7 +152,7 @@ _Alternative:_ typed fields `FormKey` and `RouteTemplate` on `TypeSpec`. Rejecte
 `GET /tasks` and `GET /tasks/count` gain:
 
 - `orderBy=created|priority|due|urgency` (count ignores it);
-- `direction=asc|desc`, mapped onto `Descending`, where `asc` is the default;
+- `direction=asc|desc`, mapped onto `Descending`, where `asc` is the default. It replaces the earlier `order=asc|desc` parameter, which is removed rather than kept as an alias: two spellings of one control would last as long as the contract, and `order` beside `orderBy` reads as the ordering itself. Unreleased, so free (rule 7), and recorded in the proposal and README;
 - `group=`.
 
 `candidate=me` and `assignee=me` are handled by D6. `openapi.json` and its test move with them. All bindings pick this up through `transport/core`, and `transporttest` asserts it on each.
