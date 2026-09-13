@@ -523,3 +523,150 @@ func (s *Store) overdueIDs(ctx context.Context, lease hmntsk.LeaseRequest) ([]hm
 
 	return ids, nil
 }
+
+// ClaimDueEvents implements [hmntsk.OutboxStore].
+//
+// Each candidate is claimed by a conditional update that repeats the whole due
+// predicate, so two relays racing on one event produce exactly one winner
+// without either taking a lock — which is the only way this can work on a
+// dialect that has no row-level locking.
+func (s *Store) ClaimDueEvents(ctx context.Context, claim hmntsk.OutboxClaim) ([]hmntsk.OutboxEntry, error) {
+	ids, err := s.dueEventIDs(ctx, claim)
+	if err != nil {
+		return nil, err
+	}
+
+	claimed := make([]hmntsk.OutboxEntry, 0, len(ids))
+
+	for _, id := range ids {
+		result, err := s.exec(ctx, s.builder.ClaimEvent(id, claim))
+		if err != nil {
+			return nil, err
+		}
+
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return nil, fmt.Errorf("hmntsk: read the rows affected by claiming event %s: %w", id, err)
+		}
+
+		if affected == 0 {
+			// Another relay got there first. That is the mechanism working,
+			// not a failure.
+			continue
+		}
+
+		entry, err := s.OutboxEntry(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+
+		claimed = append(claimed, entry)
+	}
+
+	return claimed, nil
+}
+
+// dueEventIDs selects the events a relay pass may try to claim.
+func (s *Store) dueEventIDs(ctx context.Context, claim hmntsk.OutboxClaim) ([]string, error) {
+	rows, err := s.query(ctx, s.builder.SelectDueEvents(claim))
+	if err != nil {
+		return nil, err
+	}
+
+	var ids []string
+
+	for rows.Next() {
+		var value any
+
+		if err := rows.Scan(&value); err != nil {
+			_ = rows.Close()
+
+			return nil, fmt.Errorf("hmntsk: scan a due event identifier: %w", err)
+		}
+
+		id, err := sqlcore.DecodeString(value)
+		if err != nil {
+			_ = rows.Close()
+
+			return nil, err
+		}
+
+		ids = append(ids, id)
+	}
+
+	iterErr := rows.Err()
+	closeErr := rows.Close()
+
+	switch {
+	case iterErr != nil:
+		return nil, fmt.Errorf("hmntsk: read due events: %w", iterErr)
+	case closeErr != nil:
+		return nil, fmt.Errorf("hmntsk: read due events: %w", closeErr)
+	}
+
+	return ids, nil
+}
+
+// OutboxEntry implements [hmntsk.OutboxStore].
+func (s *Store) OutboxEntry(ctx context.Context, eventID string) (hmntsk.OutboxEntry, error) {
+	rows, err := s.query(ctx, s.builder.SelectOutboxEntry(eventID))
+	if err != nil {
+		return hmntsk.OutboxEntry{}, err
+	}
+
+	entries, err := sqlcore.ScanOutboxEntries(rows)
+
+	closeErr := rows.Close()
+
+	switch {
+	case err != nil:
+		return hmntsk.OutboxEntry{}, err
+	case closeErr != nil:
+		return hmntsk.OutboxEntry{}, fmt.Errorf("hmntsk: read outbox entry %s: %w", eventID, closeErr)
+	case len(entries) == 0:
+		return hmntsk.OutboxEntry{}, &hmntsk.OutboxNotFoundError{EventID: eventID}
+	}
+
+	return entries[0], nil
+}
+
+// RecordAttempt implements [hmntsk.OutboxStore].
+func (s *Store) RecordAttempt(ctx context.Context, record hmntsk.AttemptRecord) error {
+	return s.settleOutbox(ctx, record.EventID, s.builder.RecordAttempt(record))
+}
+
+// MarkAccepted implements [hmntsk.OutboxStore].
+func (s *Store) MarkAccepted(ctx context.Context, acceptance hmntsk.Acceptance) error {
+	return s.settleOutbox(ctx, acceptance.EventID, s.builder.MarkAccepted(acceptance))
+}
+
+// MarkDeadLettered implements [hmntsk.OutboxStore].
+func (s *Store) MarkDeadLettered(ctx context.Context, letter hmntsk.DeadLetter) error {
+	return s.settleOutbox(ctx, letter.EventID, s.builder.MarkDeadLettered(letter))
+}
+
+// settleOutbox runs one settlement write and reports an unknown event.
+//
+// A rows-affected count of zero is not proof the event is gone: MySQL reports a
+// write that changed nothing the same way, and a relay recording the same
+// outcome twice after a crash writes exactly that. The row is therefore looked
+// up before an absence is reported.
+func (s *Store) settleOutbox(ctx context.Context, eventID string, statement sqlcore.Statement) error {
+	result, err := s.exec(ctx, statement)
+	if err != nil {
+		return err
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("hmntsk: read the rows affected by settling event %s: %w", eventID, err)
+	}
+
+	if affected > 0 {
+		return nil
+	}
+
+	_, err = s.OutboxEntry(ctx, eventID)
+
+	return err
+}

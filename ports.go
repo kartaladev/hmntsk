@@ -120,18 +120,19 @@ type EventSink interface {
 	Transactional() bool
 }
 
-// Store is a repository, a transactor and an event sink constructed as one
-// value.
+// Store is a repository, a transactor, an event sink and the relay's view of
+// the outbox, constructed as one value.
 //
-// They are one interface on purpose. Three ports that must share a connection,
-// built independently, is a wiring mistake that compiles cleanly and fails at
-// runtime as silently split transactions — and documentation telling users to
-// pass the same handle does not fail a build. Adapter constructors therefore
-// return a single value satisfying all three.
+// They are one interface on purpose. Ports that must share a connection, built
+// independently, is a wiring mistake that compiles cleanly and fails at runtime
+// as silently split transactions — and documentation telling users to pass the
+// same handle does not fail a build. Adapter constructors therefore return a
+// single value satisfying all four.
 type Store interface {
 	Repository
 	Transactor
 	EventSink
+	OutboxStore
 }
 
 // EventHandler consumes events after the transaction that produced them has

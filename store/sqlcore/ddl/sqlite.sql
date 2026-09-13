@@ -65,14 +65,25 @@ CREATE TABLE IF NOT EXISTS "{{PREFIX}}task_history" (
     FOREIGN KEY ("task_id") REFERENCES "{{PREFIX}}tasks" ("id") ON DELETE CASCADE
 );
 
+-- The outbox carries the relay's delivery state alongside the event, and has no
+-- dead-letter column: an entry is delivered when it has a published time,
+-- pending when it has a next attempt and no published time, and dead-lettered
+-- when it has neither. Three states out of two columns, with no way to write a
+-- row that is two of them at once.
 CREATE TABLE IF NOT EXISTS "{{PREFIX}}task_outbox" (
-    "id"            TEXT COLLATE BINARY NOT NULL PRIMARY KEY,
-    "task_id"       TEXT COLLATE BINARY NOT NULL,
-    "task_type"     TEXT COLLATE BINARY NOT NULL,
-    "event_type"    TEXT COLLATE BINARY NOT NULL,
-    "occurred_at"   TEXT NOT NULL,
-    "published_at"  TEXT,
-    "payload"       TEXT NOT NULL
+    "id"               TEXT COLLATE BINARY NOT NULL PRIMARY KEY,
+    "task_id"          TEXT COLLATE BINARY NOT NULL,
+    "task_type"        TEXT COLLATE BINARY NOT NULL,
+    "event_type"       TEXT COLLATE BINARY NOT NULL,
+    "occurred_at"      TEXT NOT NULL,
+    "published_at"     TEXT,
+    "payload"          TEXT NOT NULL,
+    "attempts"         INTEGER NOT NULL DEFAULT 0,
+    "next_attempt_at"  TEXT,
+    "last_error"       TEXT,
+    "locked_by"        TEXT COLLATE BINARY,
+    "locked_until"     TEXT,
+    "accepted_sinks"   TEXT COLLATE BINARY
 );
 
 CREATE TABLE IF NOT EXISTS "{{PREFIX}}task_types" (
@@ -95,3 +106,4 @@ CREATE INDEX IF NOT EXISTS "{{PREFIX}}tasks_correlation_idx" ON "{{PREFIX}}tasks
 CREATE INDEX IF NOT EXISTS "{{PREFIX}}tasks_due_idx" ON "{{PREFIX}}tasks" ("due_at", "status");
 CREATE INDEX IF NOT EXISTS "{{PREFIX}}task_candidates_lookup_idx" ON "{{PREFIX}}task_candidates" ("kind", "value", "task_id");
 CREATE INDEX IF NOT EXISTS "{{PREFIX}}task_outbox_unpublished_idx" ON "{{PREFIX}}task_outbox" ("published_at", "occurred_at", "id");
+CREATE INDEX IF NOT EXISTS "{{PREFIX}}task_outbox_due_idx" ON "{{PREFIX}}task_outbox" ("published_at", "next_attempt_at", "occurred_at", "id");

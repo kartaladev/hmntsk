@@ -41,7 +41,7 @@ type Store struct {
 	dataMu  sync.RWMutex
 	tasks   map[hmntsk.TaskID]hmntsk.Task
 	history map[hmntsk.TaskID][]hmntsk.TransitionRecord
-	outbox  []hmntsk.Event
+	outbox  []outboxRow
 }
 
 // Compile-time proof that the in-memory store satisfies the whole Store
@@ -67,7 +67,13 @@ type tx struct {
 	store   *Store
 	tasks   map[hmntsk.TaskID]hmntsk.Task
 	history map[hmntsk.TaskID][]hmntsk.TransitionRecord
-	outbox  []hmntsk.Event
+	// outbox holds rows appended by this scope, which no other scope can see
+	// until it commits.
+	outbox []outboxRow
+	// outboxEdits holds changes to rows that were already committed, keyed by
+	// event identifier. A lease and a settlement are both edits, and staging
+	// them separately from the appends keeps a rollback honest about each.
+	outboxEdits map[string]outboxRow
 }
 
 // ContextWithTx returns a context carrying tx, so that a host can open a
@@ -91,9 +97,10 @@ func (s *Store) ContextWithTx(ctx context.Context) (scoped context.Context, done
 // newTx stages a transaction. The caller must already hold s.txMu.
 func (s *Store) newTx() *tx {
 	return &tx{
-		store:   s,
-		tasks:   make(map[hmntsk.TaskID]hmntsk.Task),
-		history: make(map[hmntsk.TaskID][]hmntsk.TransitionRecord),
+		store:       s,
+		tasks:       make(map[hmntsk.TaskID]hmntsk.Task),
+		history:     make(map[hmntsk.TaskID][]hmntsk.TransitionRecord),
+		outboxEdits: make(map[string]outboxRow),
 	}
 }
 
@@ -109,6 +116,16 @@ func (t *tx) commit() {
 	}
 
 	t.store.outbox = append(t.store.outbox, t.outbox...)
+
+	for id, edited := range t.outboxEdits {
+		for i, row := range t.store.outbox {
+			if row.event.ID == id {
+				t.store.outbox[i] = edited
+
+				break
+			}
+		}
+	}
 }
 
 // txFrom returns the transaction active on ctx, if any.
@@ -166,7 +183,15 @@ func (s *Store) Append(ctx context.Context, events []hmntsk.Event) error {
 		}
 	}
 
-	transaction.outbox = append(transaction.outbox, events...)
+	for _, event := range events {
+		// A recorded event is due as soon as it is recorded: the outbox exists
+		// so that delivery can happen after the commit, not later than it.
+		due := hmntsk.NormalizeTime(event.OccurredAt)
+		transaction.outbox = append(transaction.outbox, outboxRow{
+			event:         event,
+			nextAttemptAt: &due,
+		})
+	}
 
 	return nil
 }
@@ -177,7 +202,12 @@ func (s *Store) Events() []hmntsk.Event {
 	s.dataMu.RLock()
 	defer s.dataMu.RUnlock()
 
-	return slices.Clone(s.outbox)
+	events := make([]hmntsk.Event, 0, len(s.outbox))
+	for _, row := range s.outbox {
+		events = append(events, row.event)
+	}
+
+	return events
 }
 
 // Create implements [hmntsk.Repository].

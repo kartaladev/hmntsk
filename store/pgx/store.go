@@ -468,3 +468,128 @@ func (s *Store) overdueIDs(ctx context.Context, lease hmntsk.LeaseRequest) ([]hm
 
 	return ids, nil
 }
+
+// ClaimDueEvents implements [hmntsk.OutboxStore].
+//
+// Each candidate is claimed by a conditional update that repeats the whole due
+// predicate, so two relays racing on one event produce exactly one winner
+// without either taking a lock.
+func (s *Store) ClaimDueEvents(ctx context.Context, claim hmntsk.OutboxClaim) ([]hmntsk.OutboxEntry, error) {
+	ids, err := s.dueEventIDs(ctx, claim)
+	if err != nil {
+		return nil, err
+	}
+
+	claimed := make([]hmntsk.OutboxEntry, 0, len(ids))
+
+	for _, id := range ids {
+		affected, err := s.exec(ctx, s.builder.ClaimEvent(id, claim))
+		if err != nil {
+			return nil, err
+		}
+
+		if affected == 0 {
+			// Another relay got there first, which is the mechanism working.
+			continue
+		}
+
+		entry, err := s.OutboxEntry(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+
+		claimed = append(claimed, entry)
+	}
+
+	return claimed, nil
+}
+
+// dueEventIDs selects the events a relay pass may try to claim.
+func (s *Store) dueEventIDs(ctx context.Context, claim hmntsk.OutboxClaim) ([]string, error) {
+	rows, err := s.query(ctx, s.builder.SelectDueEvents(claim))
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	var ids []string
+
+	for rows.Next() {
+		var value any
+
+		if err := rows.Scan(&value); err != nil {
+			return nil, fmt.Errorf("hmntsk: scan a due event identifier: %w", err)
+		}
+
+		id, err := sqlcore.DecodeString(value)
+		if err != nil {
+			return nil, err
+		}
+
+		ids = append(ids, id)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("hmntsk: read due events: %w", err)
+	}
+
+	return ids, nil
+}
+
+// OutboxEntry implements [hmntsk.OutboxStore].
+func (s *Store) OutboxEntry(ctx context.Context, eventID string) (hmntsk.OutboxEntry, error) {
+	rows, err := s.query(ctx, s.builder.SelectOutboxEntry(eventID))
+	if err != nil {
+		return hmntsk.OutboxEntry{}, err
+	}
+
+	entries, err := sqlcore.ScanOutboxEntries(rows)
+
+	rows.Close()
+
+	switch {
+	case err != nil:
+		return hmntsk.OutboxEntry{}, err
+	case len(entries) == 0:
+		return hmntsk.OutboxEntry{}, &hmntsk.OutboxNotFoundError{EventID: eventID}
+	}
+
+	return entries[0], nil
+}
+
+// RecordAttempt implements [hmntsk.OutboxStore].
+func (s *Store) RecordAttempt(ctx context.Context, record hmntsk.AttemptRecord) error {
+	return s.settleOutbox(ctx, record.EventID, s.builder.RecordAttempt(record))
+}
+
+// MarkAccepted implements [hmntsk.OutboxStore].
+func (s *Store) MarkAccepted(ctx context.Context, acceptance hmntsk.Acceptance) error {
+	return s.settleOutbox(ctx, acceptance.EventID, s.builder.MarkAccepted(acceptance))
+}
+
+// MarkDeadLettered implements [hmntsk.OutboxStore].
+func (s *Store) MarkDeadLettered(ctx context.Context, letter hmntsk.DeadLetter) error {
+	return s.settleOutbox(ctx, letter.EventID, s.builder.MarkDeadLettered(letter))
+}
+
+// settleOutbox runs one settlement write and reports an unknown event.
+//
+// A rows-affected count of zero is not proof the event is gone — a write that
+// changed nothing reports the same, which is exactly what a relay recording the
+// same outcome twice after a crash writes — so the row is looked up before an
+// absence is reported.
+func (s *Store) settleOutbox(ctx context.Context, eventID string, statement sqlcore.Statement) error {
+	affected, err := s.exec(ctx, statement)
+	if err != nil {
+		return err
+	}
+
+	if affected > 0 {
+		return nil
+	}
+
+	_, err = s.OutboxEntry(ctx, eventID)
+
+	return err
+}

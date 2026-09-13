@@ -61,6 +61,7 @@ func RunSuite(t *testing.T, factory Factory) {
 	t.Helper()
 
 	t.Run("Repository", func(t *testing.T) { runRepositoryCases(t, factory) })
+	t.Run("Outbox", func(t *testing.T) { runOutboxCases(t, factory) })
 	t.Run("Transactions", func(t *testing.T) { runTransactionCases(t, factory) })
 	t.Run("Rollback", func(t *testing.T) { runRollbackCases(t, factory) })
 	t.Run("Concurrency", func(t *testing.T) { runConcurrencyCases(t, factory) })

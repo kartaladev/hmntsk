@@ -434,3 +434,124 @@ func EventRows(events []hmntsk.Event) ([]EventRow, error) {
 
 	return rows, nil
 }
+
+// ScanOutboxEntries reads outbox rows whole: the event, and the delivery state
+// the relay reads and writes around it.
+//
+// It is the relay's counterpart to [ScanOutbox], which reads the events alone
+// and is what a host polling the durable record wants.
+func ScanOutboxEntries(rows Rows) ([]hmntsk.OutboxEntry, error) {
+	var entries []hmntsk.OutboxEntry
+
+	values := make([]any, len(outboxColumns))
+	dest := make([]any, len(outboxColumns))
+
+	for i := range values {
+		dest[i] = &values[i]
+	}
+
+	for rows.Next() {
+		if err := rows.Scan(dest...); err != nil {
+			return nil, fmt.Errorf("sqlcore: scan outbox row: %w", err)
+		}
+
+		entry, err := outboxEntry(values)
+		if err != nil {
+			return nil, err
+		}
+
+		entries = append(entries, entry)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("sqlcore: read outbox rows: %w", err)
+	}
+
+	return entries, nil
+}
+
+// outboxEntry converts one scanned outbox row into the relay's view of it.
+func outboxEntry(values []any) (hmntsk.OutboxEntry, error) {
+	var (
+		entry hmntsk.OutboxEntry
+		err   error
+	)
+
+	read := func(index int, into func(value any) error) {
+		if err != nil {
+			return
+		}
+
+		if scanErr := into(values[index]); scanErr != nil {
+			err = fmt.Errorf("sqlcore: column %s: %w", outboxColumns[index], scanErr)
+		}
+	}
+
+	var published, next, lockedUntil time.Time
+
+	readTime := func(index int, target *time.Time) {
+		read(index, func(value any) error {
+			decoded, decodeErr := DecodeTime(value)
+			*target = decoded
+
+			return decodeErr
+		})
+	}
+
+	readTime(5, &published)
+
+	read(6, func(value any) error {
+		payload, decodeErr := DecodeJSON(value)
+		if decodeErr != nil {
+			return decodeErr
+		}
+
+		if unmarshalErr := json.Unmarshal(payload, &entry.Event); unmarshalErr != nil {
+			return fmt.Errorf("decode outbox payload: %w", unmarshalErr)
+		}
+
+		return nil
+	})
+
+	read(7, func(value any) error {
+		attempts, decodeErr := DecodeInt(value)
+		entry.Attempts = int(attempts)
+
+		return decodeErr
+	})
+
+	readTime(8, &next)
+
+	read(9, func(value any) error {
+		decoded, decodeErr := DecodeString(value)
+		entry.LastError = decoded
+
+		return decodeErr
+	})
+
+	read(10, func(value any) error {
+		decoded, decodeErr := DecodeString(value)
+		entry.LockedBy = decoded
+
+		return decodeErr
+	})
+
+	readTime(11, &lockedUntil)
+
+	read(12, func(value any) error {
+		decoded, decodeErr := decodeSinks(value)
+		entry.Accepted = decoded
+
+		return decodeErr
+	})
+
+	if err != nil {
+		return hmntsk.OutboxEntry{}, err
+	}
+
+	entry.PublishedAt = optionalTime(published)
+	entry.NextAttemptAt = optionalTime(next)
+	entry.LockedUntil = optionalTime(lockedUntil)
+
+	return entry, nil
+}

@@ -58,8 +58,18 @@ var historyColumns = []string{
 }
 
 // outboxColumns is the column list of the outbox table.
+//
+// The delivery state follows the event rather than being interleaved with it,
+// because the payload's position is fixed: everything that reads an outbox row
+// finds the whole event at one index and the relay's bookkeeping after it.
+//
+// There is no dead-letter column, and that is deliberate. An entry is delivered
+// when it has a published time, pending when it has a next attempt and no
+// published time, and dead-lettered when it has neither — three states from two
+// columns, with no way to write a row that is two of them at once.
 var outboxColumns = []string{
 	"id", "task_id", "task_type", "event_type", "occurred_at", "published_at", "payload",
+	"attempts", "next_attempt_at", "last_error", "locked_by", "locked_until", "accepted_sinks",
 }
 
 // typeColumns is the column list of the task types table.
@@ -143,6 +153,11 @@ func (b *Builder) TaskColumns() []string { return append([]string(nil), taskColu
 
 // HistoryColumns returns the history table's columns in read order.
 func (b *Builder) HistoryColumns() []string { return append([]string(nil), historyColumns...) }
+
+// OutboxColumns returns the outbox table's columns in the order
+// [Builder.SelectOutboxEntry] reads them, which is the order [ScanOutboxEntries]
+// expects.
+func (b *Builder) OutboxColumns() []string { return append([]string(nil), outboxColumns...) }
 
 // stmt accumulates SQL and its arguments, handing out placeholders in the
 // dialect's style as it goes.
@@ -438,6 +453,11 @@ func (b *Builder) SelectHistory(id hmntsk.TaskID) Statement {
 // InsertOutbox renders the durable event record. The whole event is stored as
 // JSON alongside the few columns a relay filters on, because a consumer reads
 // events whole and nothing in the engine queries inside one.
+//
+// The row is born due: zero attempts, a next-attempt time equal to the instant
+// the event occurred, no sink having accepted it and no lease held. The outbox
+// exists so that delivery can happen after the commit, not later than it, and a
+// row that had to be scheduled by somebody else would sit there until they did.
 func (b *Builder) InsertOutbox(payloads []EventRow) Statement {
 	if len(payloads) == 0 {
 		return Statement{}
@@ -460,6 +480,12 @@ func (b *Builder) InsertOutbox(payloads []EventRow) Statement {
 			b.encodeTime(&occurred),
 			nil,
 			b.encodeRaw(row.Payload),
+			int64(0),
+			b.encodeTime(&occurred),
+			nil,
+			nil,
+			nil,
+			nil,
 		)+")")
 	}
 

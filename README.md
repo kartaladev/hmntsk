@@ -47,7 +47,7 @@ pulls in no driver and no web framework.
 
 | Module | What it is |
 | --- | --- |
-| `github.com/kartaladev/hmntsk` | The engine: domain, state machine, ports |
+| `github.com/kartaladev/hmntsk` | The engine: domain, state machine, ports, event relay |
 | `.../store/sqlcore` | Dialect-aware SQL and the published DDL. Executes nothing |
 | `.../store/sql` | `database/sql` adapter |
 | `.../store/pgx` | `jackc/pgx` adapter |
@@ -56,8 +56,11 @@ pulls in no driver and no web framework.
 | `.../transport/http` | `net/http` binding |
 | `.../transport/gin` | gin binding |
 | `.../transport/fiber` | Fiber v3 binding |
+| `.../delivery/webhook` | Webhook sink: signs, echoes reference parameters, refuses internal addresses |
+| `.../delivery/redis` | Redis Streams sink, producer only |
 | `.../storetest` | The suite every store adapter must pass |
 | `.../transporttest` | The suite every transport binding must pass |
+| `.../relaytest` | The suite every relay must pass, on every dialect |
 
 Drivers and dialects are orthogonal, and the matrix is sparse because pgx is
 PostgreSQL-only:
@@ -68,13 +71,15 @@ PostgreSQL-only:
 | `pgx` | ✓ | — | — |
 | `gorm` | ✓ | ✓ | ✓ |
 
-All seven combinations run the same conformance suite.
+All seven combinations run the same conformance suite — both of them: the
+storage suite and the relay suite, because claiming and retry scheduling are
+storage behaviour too.
 
 ## Wiring
 
 ```go
-// One value satisfying Repository, Transactor and EventSink. They are one
-// value on purpose: three ports that must share a connection, wired
+// One value satisfying Repository, Transactor, EventSink and OutboxStore.
+// They are one value on purpose: ports that must share a connection, wired
 // independently, is a mistake that compiles cleanly and shows up in
 // production as a transaction that silently split in two.
 store := sqlstore.New(db, sqlcore.PostgreSQL)
@@ -172,8 +177,41 @@ Nothing in an event names a caller-specific type. A consumer routes on
 `CorrelationData` — `OwnerType`, `OwnerRef`, `ActivityKey` — which the host
 supplied at creation and the engine echoes back unchanged.
 
-At-least-once delivery needs a relay reading the outbox table; this library does
-not ship one, and neither webhook delivery nor its retry policy is in scope.
+## Delivering events
+
+At-least-once delivery needs a relay reading the outbox table, and `relay` is
+it. Due events are claimed by a time-bounded lease, so relays in several
+instances do not deliver the same event twice; a retryable failure is
+rescheduled with an exponential, jittered delay; and an event that exhausts its
+attempts, or that a sink rejects permanently, is dead-lettered and retained with
+its attempt count and last error rather than retried forever.
+
+```go
+r, err := relay.NewRelay(svc,
+    relay.WithSinks(hook, bus),
+    relay.WithMaxAttempts(8),
+)
+go r.Run(ctx, 10*time.Second)   // yours to start, and yours to stop
+```
+
+Like the sweeper, it starts nothing on its own. Each event is fanned out to
+every configured sink and acceptance is tracked per sink, so a broker outage
+does not re-POST to a webhook that already succeeded.
+
+Two sinks ship, each in its own module so that neither reaches a host that does
+not import it:
+
+| Module | Delivers to |
+| --- | --- |
+| `delivery/webhook` | The task's `CallbackTarget.Address`, with reference parameters echoed verbatim, an HMAC signature over the timestamp and body, and a default-deny policy on the resolved destination address |
+| `delivery/redis` | A Redis Stream, for internal consumers — producer only: no consumer groups, no offsets |
+
+Because a callback address is supplied by whoever created the task, the webhook
+sink refuses to connect to a destination its policy rejects, evaluated against
+the **resolved address at dial time** rather than the URL text. The default
+rejects loopback, link-local — the cloud metadata address included — private
+ranges, unique-local IPv6 and the unspecified address, and does not follow
+redirects. A host that wants an internal destination supplies its own policy.
 
 ## Escalation
 

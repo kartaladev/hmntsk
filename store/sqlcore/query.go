@@ -263,3 +263,181 @@ func (b *Builder) overdueConditions(s *stmt, lease hmntsk.LeaseRequest) []string
 
 	return conditions
 }
+
+// SelectDueEvents renders the relay's candidate selection: events that are due
+// for another delivery attempt and not already held by another relay.
+//
+// Where the dialect offers it the rows are locked with SKIP LOCKED. That is an
+// optimisation and nothing more: the exclusive claim is [Builder.ClaimEvent]'s
+// conditional update, which works identically on a dialect with no row-level
+// locking at all.
+//
+// Events come back oldest first so that a backlog drains in the order it
+// accumulated. That is an ordering of the pass, not a delivery guarantee: a
+// failed event retries after events recorded later than it.
+func (b *Builder) SelectDueEvents(claim hmntsk.OutboxClaim) Statement {
+	s := b.begin()
+
+	s.write("SELECT ", b.dialect.Quote("id"), " FROM ", b.Table(OutboxTable))
+	s.write(" WHERE ", strings.Join(b.dueEventConditions(s, claim), " AND "))
+	s.write(" ORDER BY ", b.dialect.Quote("occurred_at"), ", ", b.dialect.Quote("id"))
+
+	limit := claim.Limit
+	if limit <= 0 {
+		limit = hmntsk.DefaultOutboxBatch
+	}
+
+	s.write(" LIMIT ", s.bind(int64(limit)))
+
+	if b.dialect.SupportsSkipLocked() {
+		s.write(" FOR UPDATE SKIP LOCKED")
+	}
+
+	return s.done()
+}
+
+// ClaimEvent renders the conditional update that takes a time-bounded lease on
+// one due event.
+//
+// It repeats the whole due predicate rather than trusting the selection that
+// found the event, so two relays racing on the same row produce exactly one
+// winner even though neither took a lock. A rows-affected count of zero means
+// the other relay got there first, which is the mechanism working rather than a
+// failure.
+func (b *Builder) ClaimEvent(eventID string, claim hmntsk.OutboxClaim) Statement {
+	s := b.begin()
+
+	until := hmntsk.NormalizeTime(claim.Now.Add(claim.Duration))
+
+	s.write("UPDATE ", b.Table(OutboxTable), " SET ")
+	s.write(b.dialect.Quote("locked_by"), " = ", s.bind(nullString(claim.Owner)), ", ")
+	s.write(b.dialect.Quote("locked_until"), " = ", s.bind(b.encodeTime(&until)))
+	s.write(" WHERE ", b.dialect.Quote("id"), " = ", s.bind(eventID))
+	s.write(" AND ", strings.Join(b.dueEventConditions(s, claim), " AND "))
+
+	return s.done()
+}
+
+// dueEventConditions renders the predicate shared by the relay's selection and
+// its claim, so the two can never drift apart.
+//
+// An event is due when it is neither delivered nor dead-lettered, its
+// next-attempt time has passed, and no live lease is held on it. A lease whose
+// deadline has passed is nobody's, which is what stops a relay that crashed
+// mid-pass from stranding the event forever.
+func (b *Builder) dueEventConditions(s *stmt, claim hmntsk.OutboxClaim) []string {
+	now := hmntsk.NormalizeTime(claim.Now)
+
+	return []string{
+		b.dialect.Quote("published_at") + " IS NULL",
+		b.dialect.Quote("next_attempt_at") + " IS NOT NULL",
+		b.dialect.Quote("next_attempt_at") + " <= " + s.bind(b.encodeTime(&now)),
+		"(" + b.dialect.Quote("locked_until") + " IS NULL OR " +
+			b.dialect.Quote("locked_until") + " <= " + s.bind(b.encodeTime(&now)) + ")",
+	}
+}
+
+// RecordAttempt renders the write that follows a failed but retryable attempt:
+// the new attempt count, when the event becomes due again, and what went wrong.
+func (b *Builder) RecordAttempt(record hmntsk.AttemptRecord) Statement {
+	s := b.begin()
+
+	due := hmntsk.NormalizeTime(record.NextAttemptAt)
+
+	s.write("UPDATE ", b.Table(OutboxTable), " SET ")
+	s.write(b.dialect.Quote("attempts"), " = ", s.bind(int64(record.Attempts)), ", ")
+	s.write(b.dialect.Quote("next_attempt_at"), " = ", s.bind(b.encodeTime(&due)), ", ")
+	s.write(b.dialect.Quote("last_error"), " = ", s.bind(nullString(record.LastError)))
+	s.write(b.releaseDelivery(s))
+	s.write(" WHERE ", b.dialect.Quote("id"), " = ", s.bind(record.EventID))
+
+	return s.done()
+}
+
+// MarkAccepted renders the write that records which sinks have taken an event.
+//
+// The accepted set is replaced rather than added to, so recording the same
+// acceptance twice is harmless — which matters, because a relay can crash
+// between delivering and recording. The event becomes delivered only once every
+// configured sink has accepted it, which is the caller's judgement and arrives
+// as a published time.
+func (b *Builder) MarkAccepted(acceptance hmntsk.Acceptance) Statement {
+	s := b.begin()
+
+	// An event every sink took has no outstanding failure to report, whatever
+	// the attempt that finished it had to say about the sinks that refused
+	// earlier.
+	lastError := acceptance.LastError
+	if acceptance.PublishedAt != nil {
+		lastError = ""
+	}
+
+	s.write("UPDATE ", b.Table(OutboxTable), " SET ")
+	s.write(b.dialect.Quote("accepted_sinks"), " = ", s.bind(b.encodeSinks(acceptance.Accepted)), ", ")
+	s.write(b.dialect.Quote("attempts"), " = ", s.bind(int64(acceptance.Attempts)), ", ")
+	s.write(b.dialect.Quote("last_error"), " = ", s.bind(nullString(lastError)), ", ")
+	s.write(b.dialect.Quote("published_at"), " = ", s.bind(b.encodeTime(acceptance.PublishedAt)))
+
+	// A partial acceptance says when the sinks that refused become due again. A
+	// delivered event keeps whatever next attempt it already had: the published
+	// time is what settles it, and clearing the next attempt as well would make
+	// a delivered event indistinguishable from a dead letter to anything
+	// reading the row rather than the port.
+	if acceptance.PublishedAt == nil && acceptance.NextAttemptAt != nil {
+		s.write(", ", b.dialect.Quote("next_attempt_at"))
+		s.write(" = ", s.bind(b.encodeTime(acceptance.NextAttemptAt)))
+	}
+
+	s.write(b.releaseDelivery(s))
+	s.write(" WHERE ", b.dialect.Quote("id"), " = ", s.bind(acceptance.EventID))
+
+	return s.done()
+}
+
+// MarkDeadLettered renders the write that stops further attempts on an event.
+//
+// Clearing the next-attempt time is what marks it dead: a dead letter is the
+// entry with no next attempt that was never published. The row stays, with its
+// attempt count and its last error, so that "what failed, and why?" is a query
+// rather than a log search.
+func (b *Builder) MarkDeadLettered(letter hmntsk.DeadLetter) Statement {
+	s := b.begin()
+
+	s.write("UPDATE ", b.Table(OutboxTable), " SET ")
+	s.write(b.dialect.Quote("attempts"), " = ", s.bind(int64(letter.Attempts)), ", ")
+	s.write(b.dialect.Quote("last_error"), " = ", s.bind(nullString(letter.LastError)), ", ")
+
+	// A sink that took the event on this very attempt is recorded too. Nothing
+	// will read it to decide a retry — there will not be one — but it is what
+	// answers "which destinations got it?" when the dead letter is inspected.
+	if letter.Accepted != nil {
+		s.write(b.dialect.Quote("accepted_sinks"), " = ",
+			s.bind(b.encodeSinks(letter.Accepted)), ", ")
+	}
+
+	s.write(b.dialect.Quote("next_attempt_at"), " = ", s.bind(nil))
+	s.write(b.releaseDelivery(s))
+	s.write(" WHERE ", b.dialect.Quote("id"), " = ", s.bind(letter.EventID))
+
+	return s.done()
+}
+
+// SelectOutboxEntry renders the read of one outbox row whole, delivery state
+// included. It is how a dead letter is inspected, which is the only thing the
+// engine promises about one.
+func (b *Builder) SelectOutboxEntry(eventID string) Statement {
+	s := b.begin()
+
+	s.write("SELECT ", b.quoteList("", outboxColumns), " FROM ", b.Table(OutboxTable))
+	s.write(" WHERE ", b.dialect.Quote("id"), " = ", s.bind(eventID))
+
+	return s.done()
+}
+
+// releaseDelivery renders the lease release every settlement ends with. The
+// event is not this relay's any more, whatever the outcome was, and a
+// settlement that kept the lease would strand the event until it expired.
+func (b *Builder) releaseDelivery(s *stmt) string {
+	return ", " + b.dialect.Quote("locked_by") + " = " + s.bind(nil) +
+		", " + b.dialect.Quote("locked_until") + " = " + s.bind(nil)
+}

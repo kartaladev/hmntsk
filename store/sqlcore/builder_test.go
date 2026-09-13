@@ -385,6 +385,7 @@ func TestPlaceholdersAppearInArgumentOrder(t *testing.T) {
 
 	task := sampleTask()
 	lease := hmntsk.LeaseRequest{Now: reference, Owner: "sweeper-1", Duration: time.Minute}
+	claim := hmntsk.OutboxClaim{Now: reference, Owner: "relay-1", Duration: time.Minute, Limit: 10}
 
 	build := func(b *sqlcore.Builder) map[string]sqlcore.Statement {
 		return map[string]sqlcore.Statement{
@@ -403,14 +404,37 @@ func TestPlaceholdersAppearInArgumentOrder(t *testing.T) {
 			"SelectHistory":       b.SelectHistory(task.ID),
 			"SelectOutbox":        b.SelectOutbox(10),
 			"MarkOutboxPublished": b.MarkOutboxPublished(reference, "e-1", "e-2"),
-			"SelectOverdue":       b.SelectOverdue(lease),
-			"ClaimLease":          b.ClaimLease(task.ID, lease),
-			"ReleaseLease":        b.ReleaseLease(task.ID, "sweeper-1"),
-			"UpsertType":          b.UpsertType(hmntsk.TypeSpec{Name: "approval"}, reference),
-			"SelectType":          b.SelectType("approval"),
-			"SelectTypes":         b.SelectTypes(),
-			"DeleteType":          b.DeleteType("approval"),
-			"SchemaQuery":         b.SchemaQuery(),
+			"InsertOutbox": b.InsertOutbox([]sqlcore.EventRow{
+				sampleEventRow("e-1"), sampleEventRow("e-2"),
+			}),
+			"SelectOutboxEntry": b.SelectOutboxEntry("e-1"),
+			"SelectDueEvents":   b.SelectDueEvents(claim),
+			"ClaimEvent":        b.ClaimEvent("e-1", claim),
+			"RecordAttempt": b.RecordAttempt(hmntsk.AttemptRecord{
+				EventID: "e-1", Attempts: 2, NextAttemptAt: reference, LastError: "503",
+			}),
+			"MarkAcceptedPublished": b.MarkAccepted(hmntsk.Acceptance{
+				EventID: "e-1", Accepted: []string{"webhook"}, PublishedAt: &reference, Attempts: 1,
+			}),
+			"MarkAcceptedPartial": b.MarkAccepted(hmntsk.Acceptance{
+				EventID: "e-1", Accepted: []string{"webhook"}, NextAttemptAt: &reference,
+				Attempts: 1, LastError: "bus unavailable",
+			}),
+			"MarkDeadLettered": b.MarkDeadLettered(hmntsk.DeadLetter{
+				EventID: "e-1", Attempts: 5, LastError: "400",
+			}),
+			"MarkDeadLetteredWithAcceptances": b.MarkDeadLettered(hmntsk.DeadLetter{
+				EventID: "e-1", Attempts: 5, LastError: "400",
+				Accepted: []string{"webhook"},
+			}),
+			"SelectOverdue": b.SelectOverdue(lease),
+			"ClaimLease":    b.ClaimLease(task.ID, lease),
+			"ReleaseLease":  b.ReleaseLease(task.ID, "sweeper-1"),
+			"UpsertType":    b.UpsertType(hmntsk.TypeSpec{Name: "approval"}, reference),
+			"SelectType":    b.SelectType("approval"),
+			"SelectTypes":   b.SelectTypes(),
+			"DeleteType":    b.DeleteType("approval"),
+			"SchemaQuery":   b.SchemaQuery(),
 			"QueryTasksFull": b.QueryTasks(hmntsk.ResolvedQuery{
 				Query: hmntsk.Query{
 					Assignee: "alice", Candidate: "alice", Cursor: "task-0", Limit: 10,

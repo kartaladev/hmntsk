@@ -64,9 +64,7 @@ func completeSchema(b *sqlcore.Builder, dialect sqlcore.Dialect, prefix string) 
 		sqlcore.TasksTable:      b.TaskColumns(),
 		sqlcore.CandidatesTable: {"task_id", "kind", "value", "ordinal"},
 		sqlcore.HistoryTable:    b.HistoryColumns(),
-		sqlcore.OutboxTable: {
-			"id", "task_id", "task_type", "event_type", "occurred_at", "published_at", "payload",
-		},
+		sqlcore.OutboxTable:     b.OutboxColumns(),
 		sqlcore.TypesTable: {
 			"name", "title", "description", "input_schema", "output_schema",
 			"default_priority", "default_deadline_ms", "default_escalation",
@@ -140,6 +138,44 @@ func TestVerifySchema(t *testing.T) {
 			assert: func(t *testing.T, err error) {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), "tasks.locked_until: column is missing")
+			},
+		},
+		{
+			name: "a missing delivery column is named",
+			mutate: func(rows []schemaRow) []schemaRow {
+				kept := make([]schemaRow, 0, len(rows))
+
+				for _, row := range rows {
+					if row.table != "task_outbox" || row.column != "next_attempt_at" {
+						kept = append(kept, row)
+					}
+				}
+
+				return kept
+			},
+			assert: func(t *testing.T, err error) {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "task_outbox.next_attempt_at: column is missing",
+					"a schema without the delivery columns would let the relay start and fail per event")
+			},
+		},
+		{
+			name: "a case-insensitive collation on a sink name is named",
+			mutate: func(rows []schemaRow) []schemaRow {
+				for i := range rows {
+					if rows[i].table == "task_outbox" && rows[i].column == "accepted_sinks" {
+						rows[i].collation = "utf8mb4_0900_ai_ci"
+					}
+				}
+
+				return rows
+			},
+			assert: func(t *testing.T, err error) {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "task_outbox.accepted_sinks")
+				assert.Contains(t, err.Error(), "case-insensitively",
+					"a sink whose name matched another's in a different case would be told "+
+						"an event it never took had already been delivered")
 			},
 		},
 		{

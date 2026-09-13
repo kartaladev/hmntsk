@@ -80,16 +80,28 @@ CREATE TABLE IF NOT EXISTS `{{PREFIX}}task_history` (
         REFERENCES `{{PREFIX}}tasks` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- The outbox carries the relay's delivery state alongside the event, and has no
+-- dead-letter column: an entry is delivered when it has a published time,
+-- pending when it has a next attempt and no published time, and dead-lettered
+-- when it has neither. Three states out of two columns, with no way to write a
+-- row that is two of them at once.
 CREATE TABLE IF NOT EXISTS `{{PREFIX}}task_outbox` (
-    `id`            VARCHAR(64)  COLLATE utf8mb4_0900_as_cs NOT NULL,
-    `task_id`       VARCHAR(64)  COLLATE utf8mb4_0900_as_cs NOT NULL,
-    `task_type`     VARCHAR(128) COLLATE utf8mb4_0900_as_cs NOT NULL,
-    `event_type`    VARCHAR(64)  COLLATE utf8mb4_0900_as_cs NOT NULL,
-    `occurred_at`   DATETIME(6) NOT NULL,
-    `published_at`  DATETIME(6) NULL,
-    `payload`       LONGTEXT NOT NULL,
+    `id`               VARCHAR(64)   COLLATE utf8mb4_0900_as_cs NOT NULL,
+    `task_id`          VARCHAR(64)   COLLATE utf8mb4_0900_as_cs NOT NULL,
+    `task_type`        VARCHAR(128)  COLLATE utf8mb4_0900_as_cs NOT NULL,
+    `event_type`       VARCHAR(64)   COLLATE utf8mb4_0900_as_cs NOT NULL,
+    `occurred_at`      DATETIME(6) NOT NULL,
+    `published_at`     DATETIME(6) NULL,
+    `payload`          LONGTEXT NOT NULL,
+    `attempts`         INT NOT NULL DEFAULT 0,
+    `next_attempt_at`  DATETIME(6) NULL,
+    `last_error`       TEXT NULL,
+    `locked_by`        VARCHAR(255)  COLLATE utf8mb4_0900_as_cs NULL,
+    `locked_until`     DATETIME(6) NULL,
+    `accepted_sinks`   VARCHAR(1024) COLLATE utf8mb4_0900_as_cs NULL,
     PRIMARY KEY (`id`),
-    KEY `{{PREFIX}}task_outbox_unpublished_idx` (`published_at`, `occurred_at`, `id`)
+    KEY `{{PREFIX}}task_outbox_unpublished_idx` (`published_at`, `occurred_at`, `id`),
+    KEY `{{PREFIX}}task_outbox_due_idx` (`published_at`, `next_attempt_at`, `occurred_at`, `id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `{{PREFIX}}task_types` (

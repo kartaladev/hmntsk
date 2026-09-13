@@ -20,8 +20,13 @@ var identifierColumns = map[string][]string{
 	},
 	CandidatesTable: {"task_id", "kind", "value"},
 	HistoryTable:    {"task_id", "operation", "from_status", "to_status", "actor"},
-	OutboxTable:     {"id", "task_id", "task_type", "event_type"},
-	TypesTable:      {"name"},
+	// locked_by and accepted_sinks are identifiers for the same reason the
+	// tasks table's are: a relay whose owner string matched another's in a
+	// different case would take over its lease, and a sink whose name matched
+	// another's would be told an event it never took had already been
+	// delivered.
+	OutboxTable: {"id", "task_id", "task_type", "event_type", "locked_by", "accepted_sinks"},
+	TypesTable:  {"name"},
 }
 
 // expectedColumns lists every column the engine's statements read or write, per
@@ -235,7 +240,8 @@ func (b *Builder) compareSchema(observed map[string]map[string]observedColumn) [
 				Table: prefixed, Column: column,
 				Detail: fmt.Sprintf(
 					"collation is %q but must be %q, or identifiers will compare case-insensitively",
-					found.collation, wantCollation),
+					found.collation, wantCollation,
+				),
 			})
 		}
 	}
