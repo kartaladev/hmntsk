@@ -32,6 +32,9 @@ jobs:
       - name: Install golangci-lint
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
       - run: make lint
+      # sqlkit moves to its own repository before its first tag. This fails if
+      # anything under sqlkit/ imports a module that stays behind.
+      - run: make split-check
 
   unit:
     name: unit tests
@@ -42,10 +45,10 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: "**/go.sum"
-      - name: Core, sqlcore and contract tests
+      - name: Core, sqlcore, sqlkit and contract tests
         run: |
           set -e
-          for module in . store/sqlcore transport/core storetest transporttest relaytest; do
+          for module in . store/sqlcore sqlkit transport/core storetest transporttest relaytest; do
             echo "==> $module"
             (cd "$module" && go test -count=1 ./...)
           done
@@ -76,6 +79,33 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: "**/go.sum"
       - name: Conformance suite
+        working-directory: ${{ matrix.module }}
+        run: go test -count=1 -timeout 30m -run "^${{ matrix.run }}$" ./...
+
+  # The sqlkit executor conformance suite, on the same seven driver-by-dialect
+  # combinations: one Executor contract, proven identical on database/sql, pgx
+  # and GORM.
+  executor-matrix:
+    name: executor ${{ matrix.module }} / ${{ matrix.dialect }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { module: sqlkit/stdsql, dialect: postgres, run: TestExecutorOnPostgres }
+          - { module: sqlkit/stdsql, dialect: mysql, run: TestExecutorOnMySQL }
+          - { module: sqlkit/stdsql, dialect: sqlite, run: TestExecutorOnSQLite }
+          - { module: sqlkit/pgx, dialect: postgres, run: TestExecutorOnPostgres }
+          - { module: sqlkit/gorm, dialect: postgres, run: TestExecutorOnPostgres }
+          - { module: sqlkit/gorm, dialect: mysql, run: TestExecutorOnMySQL }
+          - { module: sqlkit/gorm, dialect: sqlite, run: TestExecutorOnSQLite }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: "**/go.sum"
+      - name: Executor conformance suite
         working-directory: ${{ matrix.module }}
         run: go test -count=1 -timeout 30m -run "^${{ matrix.run }}$" ./...
 

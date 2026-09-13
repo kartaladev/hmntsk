@@ -1,9 +1,17 @@
 # Releasing
 
-Fifteen modules live in this repository and each is tagged and released
-independently. That is ongoing operational cost, accepted deliberately: it is
-what keeps `go get github.com/kartaladev/hmntsk` free of pgx, GORM, gin and
-Fiber, which is the entire point of the split.
+Twenty modules live in this repository. Fifteen make up hmntsk and are tagged
+and released from here, each independently. That is ongoing operational cost,
+accepted deliberately: it is what keeps `go get github.com/kartaladev/hmntsk`
+free of pgx, GORM, gin and Fiber, which is the entire point of the split.
+
+The other five are sqlkit — `sqlkit`, `sqlkit/sqlkittest`, `sqlkit/stdsql`,
+`sqlkit/pgx` and `sqlkit/gorm` — the domain-free SQL toolkit `store/sqlcore` is
+built on. They are developed here and are never tagged from here: they move to
+their own repository before their first release (see step 0 below), so no
+consumer ever imports them under a path that later changes. `make split-check`
+keeps that move mechanical, by failing the build if anything under `sqlkit/`
+imports a module that stays behind.
 
 ## Tagging scheme
 
@@ -36,10 +44,17 @@ the core's version, and a host pinning the core is not dragged forward by it.
 A module can only be released after everything it depends on, because its
 `go.mod` has to name a version that already exists.
 
+**Step 0, before anything below: split sqlkit out and tag it.** Move `sqlkit/`
+to `github.com/kartaladev/sqlkit` with `git filter-repo --path sqlkit/`, rewrite
+its import paths once, and tag it there. `store/sqlcore` and `storetest`
+require it, so hmntsk's first tag waits for this step. In the same pass, before
+the first hmntsk tag, point `store/sql`, `store/pgx` and `store/gorm` at sqlkit
+directly and remove the aliases `store/sqlcore` keeps for them today.
+
 ```
 1.  .                      core: domain, state machine, ports, relay
-2.  store/sqlcore          depends on core
-3.  storetest              depends on core
+2.  store/sqlcore          depends on core, sqlkit (step 0)
+3.  storetest              depends on core, sqlkittest (step 0)
 4.  relaytest              depends on core
 5.  transport/core         depends on core
 6.  transporttest          depends on core, transport/core
@@ -80,7 +95,13 @@ go: github.com/kartaladev/hmntsk/delivery/webhook imports
 
 `delivery/webhook`, `delivery/redis`, `delivery/nats` and `relaytest` all import
 `github.com/kartaladev/hmntsk/relay`, so `make tidy` fails for the whole
-workspace until core is tagged with that package. This is not a
+workspace until core is tagged with that package.
+
+sqlkit makes the same true of more modules, and for longer. Nothing under
+`github.com/kartaladev/hmntsk/sqlkit` will ever be published at that path, so
+every module that imports it — `store/sqlcore`, `storetest`, `store/sql`,
+`store/pgx`, `store/gorm`, and the sqlkit modules themselves — cannot be tidied
+until step 0 has published sqlkit under its own path. This is not a
 misconfiguration and there is nothing to fix in those modules: `go build`,
 `go test` and `go vet` all work, because those read `go.work`.
 
@@ -93,19 +114,18 @@ comment at the top of each satellite `go.mod` exists to prevent, and it is easy
 to miss because the modules still build afterwards. If you run it by accident,
 `git checkout --` the `go.mod` and `go.sum` files it touched.
 
-Until the next core tag, tidy the modules that do not import `relay`:
+Until then, tidy only the modules that import neither `relay` nor `sqlkit`:
 
 ```sh
-for m in . store/sqlcore store/sql store/pgx store/gorm \
-         transport/core transport/http transport/gin transport/fiber \
-         storetest transporttest; do
+for m in . transport/core transport/http transport/gin transport/fiber \
+         transporttest; do
     (cd $m && go mod tidy)
 done
 go work sync
 ```
 
-Curate the four affected modules' `go.mod` files by hand in the meantime,
-following the shape `store/sql` uses. After the core tag that first contains
+Curate every other module's `go.mod` by hand in the meantime, following the
+shape `store/sql` uses. After the core tag that first contains
 `relay`, `make tidy` works again for everything.
 
 **Before the first tag**, each satellite module's `go.mod` gains a real

@@ -6,19 +6,13 @@ import (
 	"time"
 
 	"github.com/kartaladev/hmntsk"
+	"github.com/kartaladev/hmntsk/sqlkit"
 )
 
 // Rows is the little that this package needs of a driver's result set. Every
 // supported driver satisfies it, which is what lets one scanner serve all
-// three.
-type Rows interface {
-	// Next advances to the next row.
-	Next() bool
-	// Scan reads the current row into dest.
-	Scan(dest ...any) error
-	// Err reports any error that ended the iteration.
-	Err() error
-}
+// three. It is [sqlkit.Rows].
+type Rows = sqlkit.Rows
 
 // TaskScanner reads task rows.
 //

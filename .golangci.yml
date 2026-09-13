@@ -9,6 +9,7 @@ linters:
   enable:
     - bodyclose
     - copyloopvar
+    - depguard
     - errorlint
     - gocritic
     - misspell
@@ -20,6 +21,28 @@ linters:
     - usetesting
     - wastedassign
   settings:
+    depguard:
+      rules:
+        # sqlkit moves to its own repository before its first tag, so nothing
+        # under it may import anything that stays behind. This is an early
+        # warning only: depguard matches by prefix and cannot allow
+        # github.com/kartaladev/hmntsk/sqlkit while refusing the root module
+        # beside it, so `make split-check` is the authoritative check.
+        sqlkit:
+          list-mode: strict
+          files:
+            - "**/sqlkit/**"
+          allow:
+            - $gostd
+            - github.com/kartaladev/hmntsk/sqlkit
+            - github.com/stretchr/testify
+            - github.com/testcontainers/testcontainers-go
+            - github.com/jackc/pgx/v5
+            - gorm.io
+            - github.com/glebarez/sqlite
+            - github.com/go-sql-driver/mysql
+            - github.com/lib/pq
+            - modernc.org/sqlite
     errcheck:
       check-type-assertions: true
     gocritic:

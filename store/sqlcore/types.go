@@ -3,10 +3,10 @@ package sqlcore
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/kartaladev/hmntsk"
+	"github.com/kartaladev/hmntsk/sqlkit"
 )
 
 // UpsertType renders the write that publishes a registered task type to the
@@ -224,5 +224,6 @@ func CheckAffected(affected int64, id hmntsk.TaskID, expected, current int64) er
 	return ConflictError(id, expected, current)
 }
 
-// TrimSQL collapses a statement's whitespace, for readable test failures.
-func TrimSQL(sql string) string { return strings.Join(strings.Fields(sql), " ") }
+// TrimSQL collapses a statement's whitespace, for readable test failures. It is
+// [sqlkit.TrimSQL].
+func TrimSQL(sql string) string { return sqlkit.TrimSQL(sql) }

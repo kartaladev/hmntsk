@@ -1,0 +1,29 @@
+module github.com/kartaladev/hmntsk/sqlkit/stdsql
+
+go 1.26.0
+
+// The dependencies on github.com/kartaladev/hmntsk/sqlkit and
+// github.com/kartaladev/hmntsk/sqlkit/sqlkittest are supplied by the
+// repository's go.work during development and are written in here, with real
+// versions, when sqlkit is tagged in its own repository.
+
+require (
+	github.com/go-sql-driver/mysql v1.10.1
+	github.com/lib/pq v1.12.3
+	github.com/stretchr/testify v1.12.1
+	modernc.org/sqlite v1.58.0
+)
+
+require (
+	filippo.io/edwards25519 v1.2.0 // indirect
+	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/google/uuid v1.6.0 // indirect
+	github.com/mattn/go-isatty v0.0.24 // indirect
+	github.com/ncruces/go-strftime v1.0.0 // indirect
+	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	modernc.org/libc v1.75.6 // indirect
+	modernc.org/mathutil v1.7.1 // indirect
+	modernc.org/memory v1.12.1 // indirect
+)
