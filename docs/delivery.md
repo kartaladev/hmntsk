@@ -339,3 +339,172 @@ redis-cli INFO server | grep redis_version     # must be 8.2.0 or later
 
 Removing a bound or a mode takes effect on the next publish. Entries already
 trimmed are gone.
+
+---
+
+# Publishing to NATS
+
+`delivery/nats` publishes every event to NATS, for internal consumers, in one of
+two modes. Choose by what "delivered" has to mean for you: the modes do not
+promise the same thing. Like the Redis sink it is a producer only, and creates
+no subscription, consumer or stream. `delivery/nats`'s `docs_test.go` asserts
+that the names, values and error quoted below are the ones the code uses.
+
+| | `NewSink` — plain subjects | `NewJetStreamSink` — JetStream |
+| --- | --- | --- |
+| Takes | the host's `*nats.Conn` | a `jetstream.JetStream` on the host's connection |
+| Default sink name | `nats` | `jetstream` |
+| Delivered when | the server has received the message | a stream has stored it |
+| No subscriber, or no stream | **delivered, and lost** | retryable, then dead-lettered |
+| A redelivery | reaches subscribers again: de-duplicate on `Hmntsk-Event-Id` | discarded by the stream inside its duplicate window |
+
+```go
+plain, err := hmntsknats.NewSink(conn)                   // plain subjects
+stored, err := hmntsknats.NewJetStreamSink(js)           // JetStream: you create the stream
+```
+
+Neither constructor dials, and neither closes what it is given: servers,
+credentials, TLS and reconnect policy belong to the connection you build.
+
+## Plain subjects: delivered means received
+
+`NewSink` publishes and then flushes: it waits for the server to answer a ping
+sent after the message, which the server can only do once it has read the
+message. While the client is reconnecting it buffers publications and reports
+success; the flush is what notices, and the attempt is retryable when no answer
+arrives inside the timeout. If the client later reconnects and sends the
+buffered message after all, the next pass publishes the event again — the
+at-least-once duplicate every consumer already handles.
+
+**Delivered does not mean anyone received it.** Plain NATS has no
+acknowledgement from subscribers and keeps no history. An event published while
+nothing subscribes to its subject is delivered, is never offered again, and no
+subscriber ever sees it. If that is not acceptable, use JetStream.
+
+## JetStream: delivered means stored
+
+`NewJetStreamSink` makes one publication per attempt, and reports delivered only
+when a stream acknowledges storing it.
+
+**The sink never creates, updates or deletes a stream.** Subjects, retention,
+replicas, storage and the duplicate window are your decisions, made once. Create
+a stream capturing the prefix before you start the relay:
+
+```go
+_, err := js.CreateStream(ctx, jetstream.StreamConfig{
+    Name:       "HMNTSK_EVENTS",
+    Subjects:   []string{"hmntsk.events.>"},
+    Duplicates: 2 * time.Minute,                         // the duplicate window
+})
+```
+
+With no stream capturing the subject, every publish fails with:
+
+```
+nats: no response from stream
+```
+
+The sink classifies it as retryable, because the same answer comes back briefly
+while a stream elects a new leader, and a permanent verdict would dead-letter a
+backlog over that blip. The cost: **a forgotten stream retries each event until
+the attempt limit, and then dead-letters it.** Nothing is stored in the meantime.
+
+**One publication per attempt.** Left to its default, the client answers that
+error with two more publications 250 ms apart. The sink turns that off: a retry
+inside an attempt multiplies the relay's attempt budget by a number the relay
+cannot see.
+
+**Redeliveries are discarded by the stream — for a while.** Every publication
+carries the event identifier as its `Nats-Msg-Id`, and the stream discards a
+second message with that identifier inside its duplicate window (2 minutes
+unless the stream says otherwise). The acknowledgement of a discarded duplicate
+is reported delivered, because the stream holds the event. A redelivery after
+the window is stored again, so consumers still de-duplicate on
+`Hmntsk-Event-Id`.
+
+`WithExpectStream` names the stream every publication must land in, for hosts
+whose streams have overlapping subjects. It is off by default. A publication the
+server would store in any other stream is refused before it is stored, and is
+retryable: reconfiguring the stream fixes it without redeploying.
+
+## The subject
+
+```
+<prefix>.<event type>          hmntsk.events.task.completed
+```
+
+The prefix is `hmntsk.events` by default, and `WithSubjectPrefix` changes it.
+Event types are fixed and dot-separated, so the server filters for you:
+`hmntsk.events.>` selects everything, `hmntsk.events.task.escalated` one type.
+
+**The task type is not in the subject.** A task type may be any non-empty name,
+including `.`, `*`, `>` and spaces: a wildcard would make the server refuse the
+publication, and a dot would change the subject's depth. Filter on the
+`Hmntsk-Task-Type` header instead. The prefix itself is checked at construction
+against the rules for a publish subject — non-empty, no empty token, no
+wildcard, no whitespace — so a bad prefix fails when the host starts, not on
+every event.
+
+## The message
+
+| Header | What it carries |
+| --- | --- |
+| `Hmntsk-Event-Id` | The event. **Stable across redeliveries** — the de-duplication key |
+| `Hmntsk-Delivery-Id` | This attempt. Fresh every time, minted by the relay |
+| `Hmntsk-Attempt` | Which attempt this is, counting from one |
+| `Hmntsk-Event-Type` | The catalogue member, such as `task.completed` |
+| `Hmntsk-Task-Id` | The task the event is about |
+| `Hmntsk-Task-Type` | The task's registered type name |
+| `Hmntsk-Correlation-Owner-Type` | The host's correlation data, echoed unchanged; each omitted when empty |
+| `Hmntsk-Correlation-Owner-Ref` | |
+| `Hmntsk-Correlation-Activity-Key` | |
+| `Hmntsk-Schema` | `hmntsk.nats.event.v1`, the version of this header-and-body contract |
+| `Content-Type` | `application/json` |
+
+The names and values are the webhook's, so a receiver of either already knows
+them. The schema is not the Redis sink's `hmntsk.event.v1`, because the shape is
+not the same.
+
+The body is the whole event as JSON, exactly what the Redis sink carries in its
+`event` field, including the output, the callback target and the transition.
+
+**Headers are routing hints; the body is authoritative.** A header value cannot
+carry a line break, so the NATS client replaces `\r` and `\n` in one with a
+space. A task type or correlation value containing a line break is still
+delivered, with the sanitised value in the header and the original in the body.
+Route on the headers; read the body when the exact value matters.
+
+## Failures
+
+| Failure | Verdict |
+| --- | --- |
+| The event has no identifier, or will not marshal | permanent |
+| The message is larger than the server's `max_payload` | permanent |
+| A subject the client refuses — impossible for a valid prefix and a catalogue event type | permanent |
+| A timeout, a lost or reconnecting connection, a cancelled pass | retryable |
+| `nats: headers not supported by this server` | retryable |
+| `nats: no response from stream`, a publication bound for another stream, any other JetStream refusal | retryable |
+
+The headers error is retryable although it sounds permanent: the client also
+answers it for every message on a connection that has not finished connecting
+for the first time, such as one built with `RetryOnFailedConnect` while the
+server is down. A server that genuinely cannot carry headers — older than 2.2 —
+therefore retries each event until it is dead-lettered.
+
+Each attempt is bounded by a timeout — 5 seconds by default, `WithTimeout` to
+change it — so that one unresponsive server cannot hold a relay pass open. A
+shorter deadline on the relay's own context still wins.
+
+## Switching modes, and the sink name
+
+The relay records acceptance **per sink name**, for every event it is still
+delivering. That is why the modes default to different names, `nats` and
+`jetstream`: a host that replaces the plain sink with the JetStream sink has the
+JetStream sink offered every event still in the outbox, including those the
+plain sink already took. Give both the same name with `WithName`, and the relay
+would count the plain sink's acceptance as the JetStream sink's: those events
+would never be stored.
+
+The other direction is the relay's general rule: renaming a sink redelivers
+every event that sink has already taken. That is at-least-once, not a bug — but
+a stream only discards the redeliveries that fall inside its duplicate window.

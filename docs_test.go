@@ -113,7 +113,7 @@ func TestReleaseOrderCoversEveryModule(t *testing.T) {
 		".", "store/sqlcore", "store/sql", "store/pgx", "store/gorm",
 		"transport/core", "transport/http", "transport/gin", "transport/fiber",
 		"storetest", "transporttest", "relaytest",
-		"delivery/webhook", "delivery/redis",
+		"delivery/webhook", "delivery/redis", "delivery/nats",
 	}
 
 	for _, module := range modules {

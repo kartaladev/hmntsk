@@ -1,6 +1,6 @@
 MODULES := . store/sqlcore store/sql store/pgx store/gorm \
            transport/core transport/http transport/gin transport/fiber \
-           delivery/webhook delivery/redis \
+           delivery/webhook delivery/redis delivery/nats \
            storetest transporttest relaytest
 
 # RELEASE_ORDER is the order the modules must be tagged in: a module can only
@@ -8,7 +8,7 @@ MODULES := . store/sqlcore store/sql store/pgx store/gorm \
 # is documented in docs/releasing.md, and a test asserts that the two agree.
 RELEASE_ORDER := . store/sqlcore storetest relaytest transport/core transporttest \
                  store/sql store/pgx store/gorm \
-                 delivery/webhook delivery/redis \
+                 delivery/webhook delivery/redis delivery/nats \
                  transport/http transport/gin transport/fiber
 
 GO ?= go
