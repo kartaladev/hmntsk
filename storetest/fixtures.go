@@ -76,6 +76,8 @@ func NewEvent(task hmntsk.Task, eventType hmntsk.EventType, id string) hmntsk.Ev
 		Version:     task.Version,
 		Actor:       Assignee,
 		Assignee:    task.Assignee,
+		Candidates:  task.Candidates.Clone(),
+		CreatedBy:   task.CreatedBy,
 		OccurredAt:  Reference,
 		Correlation: task.Correlation,
 		Callback:    task.Callback,

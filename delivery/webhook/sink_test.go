@@ -134,15 +134,20 @@ func newSink(t *testing.T, opts ...webhook.Option) *webhook.Sink {
 // empty.
 func testEvent(target string) hmntsk.Event {
 	event := hmntsk.Event{
-		ID:         "01920000-0000-7000-8000-000000000001",
-		Type:       hmntsk.EventTypeCompleted,
-		TaskID:     "task-1",
-		TaskType:   "approval",
-		Status:     hmntsk.StatusCompleted,
-		Version:    3,
-		Actor:      "alice",
-		Assignee:   "alice",
-		OccurredAt: signedAt.Add(-time.Minute),
+		ID:       "01920000-0000-7000-8000-000000000001",
+		Type:     hmntsk.EventTypeCompleted,
+		TaskID:   "task-1",
+		TaskType: "approval",
+		Status:   hmntsk.StatusCompleted,
+		Version:  3,
+		Actor:    "alice",
+		Assignee: "alice",
+		Candidates: hmntsk.CandidatePool{
+			Users: []string{"alice", "bob"}, Groups: []string{"approvers"}, Excluded: []string{"mallory"},
+		},
+		PreviousAssignee: "carol",
+		CreatedBy:        "owner",
+		OccurredAt:       signedAt.Add(-time.Minute),
 		Correlation: hmntsk.CorrelationData{
 			OwnerType:   "process",
 			OwnerRef:    "order-4711",
@@ -317,6 +322,9 @@ func TestSinkDeliverRequest(t *testing.T) {
 		assert.Equal(t, event.Actor, payload.Event.Actor)
 		assert.True(t, event.OccurredAt.Equal(payload.Event.OccurredAt))
 		assert.Equal(t, event.Correlation, payload.Correlation)
+		assert.Equal(t, event.Candidates, payload.Event.Candidates, "the body carries the pool after the transition")
+		assert.Equal(t, event.PreviousAssignee, payload.Event.PreviousAssignee, "the body names the holder replaced")
+		assert.Equal(t, event.CreatedBy, payload.Event.CreatedBy, "the body names the task's creator")
 	})
 
 	t.Run("the reference parameters arrive byte for byte", func(t *testing.T) {

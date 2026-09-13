@@ -17,11 +17,14 @@ const (
 	EventTypeCreated EventType = "task.created"
 	// EventTypeClaimed reports a task reserved by an eligible actor.
 	EventTypeClaimed EventType = "task.claimed"
-	// EventTypeReleased reports a task returned to its pool.
+	// EventTypeReleased reports a task returned to its pool. Its
+	// PreviousAssignee names the actor who released it, and its Candidates the
+	// pool the task is back in.
 	EventTypeReleased EventType = "task.released"
 	// EventTypeStarted reports work begun on a task.
 	EventTypeStarted EventType = "task.started"
-	// EventTypeDelegated reports a task reassigned to another actor.
+	// EventTypeDelegated reports a task reassigned to another actor. Assignee
+	// names the new holder and PreviousAssignee the one it was taken from.
 	EventTypeDelegated EventType = "task.delegated"
 	// EventTypeCompleted reports a task closed with an output. It says nothing
 	// about whether the outcome was favourable; read the output for that.
@@ -136,6 +139,18 @@ type Event struct {
 	// Assignee is the task's assignee after the transition, empty when it sits
 	// in the pool.
 	Assignee string `json:"assignee,omitempty"`
+	// Candidates is the task's candidate pool after the transition, exclusions
+	// included, exactly as the pool names its users and groups. Groups are not
+	// expanded into members: membership is resolved when it is used.
+	Candidates CandidatePool `json:"candidates,omitzero"`
+	// PreviousAssignee is the actor who held the task before the transition,
+	// set only when somebody held it and the transition replaced them: a
+	// release or a delegation. A claim from the pool had no holder, so it has
+	// none.
+	PreviousAssignee string `json:"previousAssignee,omitempty"`
+	// CreatedBy is who created the task. It never changes, so every event on a
+	// task carries the same value.
+	CreatedBy string `json:"createdBy,omitempty"`
 	// OccurredAt is when the transition happened, UTC at microsecond precision.
 	OccurredAt time.Time `json:"occurredAt"`
 	// Correlation ties the event back to the work that asked for the task.

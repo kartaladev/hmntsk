@@ -31,15 +31,20 @@ func testEvent() hmntsk.Event {
 	occurred := time.Date(2026, time.September, 13, 10, 30, 0, 123456000, time.UTC)
 
 	return hmntsk.Event{
-		ID:         "evt-0001",
-		Type:       hmntsk.EventTypeCompleted,
-		TaskID:     "tsk-0001",
-		TaskType:   "acme.approval",
-		Status:     hmntsk.StatusCompleted,
-		Version:    7,
-		Actor:      "alice",
-		Assignee:   "alice",
-		OccurredAt: occurred,
+		ID:       "evt-0001",
+		Type:     hmntsk.EventTypeCompleted,
+		TaskID:   "tsk-0001",
+		TaskType: "acme.approval",
+		Status:   hmntsk.StatusCompleted,
+		Version:  7,
+		Actor:    "alice",
+		Assignee: "alice",
+		Candidates: hmntsk.CandidatePool{
+			Users: []string{"alice", "bob"}, Groups: []string{"finance-approvers"}, Excluded: []string{"mallory"},
+		},
+		PreviousAssignee: "carol",
+		CreatedBy:        "owner",
+		OccurredAt:       occurred,
 		Correlation: hmntsk.CorrelationData{
 			OwnerType:   "process",
 			OwnerRef:    "ord-42",
