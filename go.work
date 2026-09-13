@@ -5,6 +5,9 @@ use (
 	./delivery/nats
 	./delivery/redis
 	./delivery/webhook
+	./notify
+	./notify/notifytest
+	./notify/sqlstore
 	./relaytest
 	./sqlkit
 	./sqlkit/gorm

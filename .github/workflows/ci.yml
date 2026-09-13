@@ -32,8 +32,9 @@ jobs:
       - name: Install golangci-lint
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
       - run: make lint
-      # sqlkit moves to its own repository before its first tag. This fails if
-      # anything under sqlkit/ imports a module that stays behind.
+      # sqlkit and notify move to their own repositories before their first tag.
+      # This fails if anything under sqlkit/ or notify/ imports a module that
+      # stays behind.
       - run: make split-check
 
   unit:
@@ -45,10 +46,10 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: "**/go.sum"
-      - name: Core, sqlcore, sqlkit and contract tests
+      - name: Core, sqlcore, sqlkit, notify and contract tests
         run: |
           set -e
-          for module in . store/sqlcore sqlkit transport/core storetest transporttest relaytest; do
+          for module in . store/sqlcore sqlkit notify notify/notifytest transport/core storetest transporttest relaytest; do
             echo "==> $module"
             (cd "$module" && go test -count=1 ./...)
           done
@@ -107,6 +108,33 @@ jobs:
           cache-dependency-path: "**/go.sum"
       - name: Executor conformance suite
         working-directory: ${{ matrix.module }}
+        run: go test -count=1 -timeout 30m -run "^${{ matrix.run }}$" ./...
+
+  # The notification store conformance suite, on the same seven combinations.
+  # The GORM entry points are a separate test package: GORM's SQLite driver
+  # registers under the same name as the one database/sql uses.
+  notify-store-matrix:
+    name: notify store ${{ matrix.driver }} / ${{ matrix.dialect }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { dir: notify/sqlstore, driver: stdsql, dialect: postgres, run: TestStoreOnStdSQLPostgres }
+          - { dir: notify/sqlstore, driver: stdsql, dialect: mysql, run: TestStoreOnStdSQLMySQL }
+          - { dir: notify/sqlstore, driver: stdsql, dialect: sqlite, run: TestStoreOnStdSQLSQLite }
+          - { dir: notify/sqlstore, driver: pgx, dialect: postgres, run: TestStoreOnPgxPostgres }
+          - { dir: notify/sqlstore/internal/gormtest, driver: gorm, dialect: postgres, run: TestStoreOnGormPostgres }
+          - { dir: notify/sqlstore/internal/gormtest, driver: gorm, dialect: mysql, run: TestStoreOnGormMySQL }
+          - { dir: notify/sqlstore/internal/gormtest, driver: gorm, dialect: sqlite, run: TestStoreOnGormSQLite }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: "**/go.sum"
+      - name: Notification store conformance suite
+        working-directory: ${{ matrix.dir }}
         run: go test -count=1 -timeout 30m -run "^${{ matrix.run }}$" ./...
 
   # Claiming, retry scheduling and dead-lettering are storage behaviour, so the

@@ -8,7 +8,7 @@ HMNTSK_MODULES := . store/sqlcore store/sql store/pgx store/gorm \
 
 SQLKIT_MODULES := sqlkit sqlkit/sqlkittest sqlkit/stdsql sqlkit/pgx sqlkit/gorm
 
-NOTIFY_MODULES :=
+NOTIFY_MODULES := notify notify/notifytest notify/sqlstore
 
 # GROUP narrows every per-module target to one group: all, hmntsk, sqlkit or
 # notify. `make test GROUP=sqlkit` runs only the sqlkit modules.
@@ -53,7 +53,7 @@ GOTOOLCHAIN ?= go1.26.8
 export GOTOOLCHAIN
 
 .PHONY: all build lint split-check fmt test test-integration test-race tidy vuln generate \
-        store-matrix relay-matrix executor-matrix transport-matrix release-order clean
+        store-matrix relay-matrix executor-matrix notify-store-matrix transport-matrix release-order clean
 
 all: lint split-check test
 
@@ -175,6 +175,26 @@ EXECUTOR_MATRIX := sqlkit/stdsql:TestExecutorOnPostgres sqlkit/stdsql:TestExecut
                    sqlkit/pgx:TestExecutorOnPostgres \
                    sqlkit/gorm:TestExecutorOnPostgres sqlkit/gorm:TestExecutorOnMySQL \
                    sqlkit/gorm:TestExecutorOnSQLite
+
+# NOTIFY_STORE_MATRIX is the same seven driver-by-dialect combinations, running
+# the notification store conformance suite over notify/sqlstore. The GORM entry
+# points live in their own test package: GORM's SQLite driver registers under
+# the same name as the one database/sql uses, and one binary cannot hold both.
+NOTIFY_STORE_MATRIX := notify/sqlstore:TestStoreOnStdSQLPostgres notify/sqlstore:TestStoreOnStdSQLMySQL \
+                       notify/sqlstore:TestStoreOnStdSQLSQLite \
+                       notify/sqlstore:TestStoreOnPgxPostgres \
+                       notify/sqlstore/internal/gormtest:TestStoreOnGormPostgres \
+                       notify/sqlstore/internal/gormtest:TestStoreOnGormMySQL \
+                       notify/sqlstore/internal/gormtest:TestStoreOnGormSQLite
+
+## notify-store-matrix: run the notification store conformance suite over all
+## seven combinations.
+notify-store-matrix:
+	@set -e; for entry in $(NOTIFY_STORE_MATRIX); do \
+		m=$${entry%%:*}; run=$${entry##*:}; \
+		echo "==> $$m $$run"; \
+		(cd $$m && $(GO) test -count=1 -timeout 30m -run "^$$run$$" ./...); \
+	done
 
 # TRANSPORT_MATRIX is the three framework bindings, each running the shared
 # transport suite.

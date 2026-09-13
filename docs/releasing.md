@@ -1,6 +1,6 @@
 # Releasing
 
-Twenty modules live in this repository. Fifteen make up hmntsk and are tagged
+Twenty-three modules live in this repository. Fifteen make up hmntsk and are tagged
 and released from here, each independently. That is ongoing operational cost,
 accepted deliberately: it is what keeps `go get github.com/kartaladev/hmntsk`
 free of pgx, GORM, gin and Fiber, which is the entire point of the split.
@@ -12,6 +12,12 @@ their own repository before their first release (see step 0 below), so no
 consumer ever imports them under a path that later changes. `make split-check`
 keeps that move mechanical, by failing the build if anything under `sqlkit/`
 imports a module that stays behind.
+
+The last three are notify — `notify`, `notify/notifytest` and `notify/sqlstore`
+— the generic notification library. Like sqlkit, they are developed here, never
+tagged from here, and move to their own repository before their first release
+(step 0b below). `make split-check` fails the build if anything under `notify/`
+imports a module other than notify or sqlkit.
 
 ## Tagging scheme
 
@@ -50,6 +56,11 @@ its import paths once, and tag it there. `store/sqlcore` and `storetest`
 require it, so hmntsk's first tag waits for this step. In the same pass, before
 the first hmntsk tag, point `store/sql`, `store/pgx` and `store/gorm` at sqlkit
 directly and remove the aliases `store/sqlcore` keeps for them today.
+
+**Step 0b, after sqlkit: split notify out the same way.** Move `notify/` to its
+own repository with `git filter-repo --path notify/`, rewrite its import paths
+once, require the sqlkit tag from step 0, and tag it there. Nothing in the list
+below imports notify; an hmntsk module that does waits for this step.
 
 ```
 1.  .                      core: domain, state machine, ports, relay
