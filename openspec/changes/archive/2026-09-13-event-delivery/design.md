@@ -45,7 +45,7 @@ The relay is in the core module rather than its own because it is pure storage b
 ```go
 type Sink interface {
     Name() string
-    Deliver(ctx context.Context, ev hmntsk.Event, task hmntsk.Task) Outcome
+    Deliver(ctx context.Context, ev hmntsk.Event) Outcome
 }
 
 type Outcome struct {
@@ -54,9 +54,17 @@ type Outcome struct {
 }
 ```
 
-*Why not `error`:* the relay must distinguish "try again in a minute" from "this will never work" — a 400 and a 503 are both errors and must be treated oppositely. Encoding that in sentinel errors would put the classification in the sink's error values and leave the relay pattern-matching on them; a returned status makes it part of the contract, and makes a sink that forgets to classify a compile-time problem rather than a silent "retry forever".
+*Why not `error`:* the relay must distinguish "try again in a minute" from "this will never work" — a 400 and a 503 are both errors and must be treated oppositely. Encoding that in sentinel errors would put the classification in the sink's error values and leave the relay pattern-matching on them; a returned status makes it part of the contract, and makes a sink that forgets to classify a reviewable omission rather than a silent "retry forever". The zero value is `OutcomeUnclassified`, which is not a verdict: a sink returning it is reported to the host's error handler, not quietly retried.
 
-`Deliver` receives the task as well as the event because the webhook sink needs `CallbackTarget`, which lives on the task, and re-reading it per event inside the sink would be a second query the relay has already paid for.
+*Why the event alone, and not the task as well.* An earlier draft of this decision passed the task too, on the grounds that the webhook sink needs `CallbackTarget` and that re-reading it inside the sink would be a second query. That was wrong about the code: `hmntsk.Event` already carries `Callback`, `Correlation`, `TaskType` and `Status`, and the outbox stores the whole event as JSON, so the relay's single outbox read has already paid for everything both sinks need. Passing the task is what would *add* a read per event.
+
+Three things settle it beyond the query count:
+
+- **The event is point-in-time; the task is current state.** An event describes the transition that happened. A task read during a later relay pass describes the task as it is now. A `task.claimed` event redelivered after a retry, rendered from a task that has since completed, would ship a body contradicting its own event type.
+- **A dead letter must stay inspectable.** If the task row is archived or purged, an event rendered from the event alone is still deliverable; one that needs the task becomes permanently undeliverable through no fault of the receiver, in a case no requirement covers.
+- **Sinks stay trivially testable**, and `relaytest` seeds outbox rows without having to seed consistent task rows beside them.
+
+A future sink that genuinely needs live task state takes `hmntsk.Repository` in its own constructor and pays for the read itself, rather than charging every sink for it.
 
 ### D3. Claiming reuses the escalation lease, not a queue
 
@@ -75,6 +83,16 @@ The jitter is the load-bearing part. Without it, a receiver that goes down for f
 An exhausted or permanently failed event keeps its row and gains a dead-letter marker, its attempt count and its last error. A separate table would need the same columns plus a join for every "what failed?" question, and would let a row exist in both places.
 
 This is the one place this change modifies an existing spec: `task-events` promised retention "until delivery is acknowledged", which a dead letter never is. Retention is now until acceptance *or* dead-lettering. Without that amendment the engine would be required to retry an unroutable webhook forever.
+
+*The marker is the absence of a next attempt, not a column of its own.* The six columns this change adds are `attempts`, `next_attempt_at`, `last_error`, `locked_by`, `locked_until` and `accepted_sinks`; there is no seventh `dead_lettered_at`. The three conditions are distinguished by the two nullable timestamps that already have to exist:
+
+| | `published_at` | `next_attempt_at` |
+| --- | --- | --- |
+| delivered | set | — |
+| pending | null | set |
+| dead-lettered | null | null |
+
+A dead letter is the entry that will never be attempted again and never was delivered, which is exactly what "no next attempt, never published" says. A separate marker column would be a fourth state the other three could contradict — a row both dead-lettered and due is representable with it and unrepresentable without it.
 
 ### D6. Per-sink accounting, because one flag cannot express two destinations
 
