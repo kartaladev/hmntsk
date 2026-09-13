@@ -131,6 +131,8 @@ func TestSchemaDocumentationMatchesThePublishedDDL(t *testing.T) {
 		t.Parallel()
 
 		assert.Contains(t, doc, "`metadata`", "the task_types metadata column is not documented")
+		assert.Contains(t, doc, "ADD COLUMN",
+			"CREATE TABLE IF NOT EXISTS never adds a column to an existing table, so the upgrade has to be written down")
 
 		for _, dialect := range sqlcore.Dialects() {
 			b := sqlcore.New(dialect)

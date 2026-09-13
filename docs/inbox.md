@@ -260,7 +260,7 @@ Nothing is tagged yet, so these land free:
 - **Queries are self-only by default.** A client that read another actor's inbox
   now gets `403`. Supply a policy, or `AllowAll` to restore the old behaviour.
 - **`order` is now `direction`.** The direction parameter is `direction=asc|desc`,
-  beside `orderBy`. The old `order` parameter is gone rather than kept as a
+  beside `orderBy`. The old `order` parameter is refused with `400`, naming its replacement, rather than kept as a
   second spelling.
 - **Cursors changed encoding.** A cursor issued before the change is refused as a
   validation error, and the client starts again from the first page.

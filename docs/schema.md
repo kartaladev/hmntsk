@@ -247,6 +247,39 @@ off by default and the schema relies on them:
 file:tasks.db?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(10000)
 ```
 
+## Upgrading an existing schema
+
+The published statements use `CREATE TABLE IF NOT EXISTS`, which never changes a
+table that is already there. A schema created before the inbox orderings needs
+the `task_types.metadata` column and three ordering indexes added by hand, or
+through your migration tool. Until then `VerifySchema` reports what is missing,
+and every task type read or write fails on the absent column. Put your table
+prefix in front of every table and index name below.
+
+PostgreSQL. Re-applying the published statements creates the indexes, because
+each is its own `CREATE INDEX IF NOT EXISTS`; only the column needs this:
+
+```sql
+ALTER TABLE "task_types" ADD COLUMN IF NOT EXISTS "metadata" text;
+```
+
+MySQL. Its indexes are declared inside `CREATE TABLE`, so they need adding too:
+
+```sql
+ALTER TABLE `task_types` ADD COLUMN `metadata` LONGTEXT NULL;
+ALTER TABLE `tasks`
+    ADD INDEX `tasks_priority_idx` (`priority`, `id`),
+    ADD INDEX `tasks_due_order_idx` (`due_at`, `id`),
+    ADD INDEX `tasks_urgency_idx` (`priority`, `due_at`, `id`);
+```
+
+SQLite. As with PostgreSQL, re-applying the published statements creates the
+indexes:
+
+```sql
+ALTER TABLE "task_types" ADD COLUMN "metadata" TEXT;
+```
+
 ## Development runner
 
 `Migrate` applies the published statements and exists for tests and local

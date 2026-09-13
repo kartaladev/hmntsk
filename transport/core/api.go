@@ -446,6 +446,12 @@ func parseQuery(req Request) (hmntsk.Query, error) {
 
 	query.OrderBy = ordering
 
+	// order was the direction before direction replaced it. Ignoring it would
+	// page an old client the wrong way without a word, so it is refused.
+	if req.QueryValue("order") != "" {
+		return hmntsk.Query{}, badRequest("order", "is no longer a parameter; use direction=asc|desc")
+	}
+
 	switch req.QueryValue("direction") {
 	case "", "asc":
 	case "desc":

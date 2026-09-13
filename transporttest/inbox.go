@@ -374,6 +374,15 @@ func inboxDefaultPolicy(t *testing.T, mount Mount) {
 			path: "/tasks?candidate=me&orderBy=bogus", actor: Alice, assert: badRequest,
 		},
 		{
+			name: "the removed order parameter is refused rather than ignored",
+			path: "/tasks?candidate=me&order=desc", actor: Alice,
+			assert: func(t *testing.T, result Result) {
+				badRequest(t, result)
+				assert.Contains(t, result.Error(t).Message, "direction",
+					"a client still sending order must be told what replaced it, not paged the wrong way")
+			},
+		},
+		{
 			name: "an unsupported direction is a bad request",
 			path: "/tasks?candidate=me&direction=sideways", actor: Alice, assert: badRequest,
 		},
