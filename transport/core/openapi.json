@@ -871,7 +871,7 @@
                 }
               }
             },
-            "description": "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox."
+            "description": "The acting actor is not eligible for the task or is not its assignee, the query authorization policy refused the query, or the read authorization policy refused the read. By default an actor may query only their own inbox, and may read only tasks they hold, are eligible for, or created. A read with no acting user is always refused."
           },
           "500": {
             "content": {
@@ -1055,7 +1055,7 @@
                 }
               }
             },
-            "description": "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox."
+            "description": "The acting actor is not eligible for the task or is not its assignee, the query authorization policy refused the query, or the read authorization policy refused the read. By default an actor may query only their own inbox, and may read only tasks they hold, are eligible for, or created. A read with no acting user is always refused."
           },
           "500": {
             "content": {
@@ -1123,7 +1123,7 @@
                 }
               }
             },
-            "description": "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox."
+            "description": "The acting actor is not eligible for the task or is not its assignee, the query authorization policy refused the query, or the read authorization policy refused the read. By default an actor may query only their own inbox, and may read only tasks they hold, are eligible for, or created. A read with no acting user is always refused."
           },
           "404": {
             "content": {
@@ -1181,6 +1181,16 @@
             },
             "description": "The operation succeeded."
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The acting actor is not eligible for the task or is not its assignee, the query authorization policy refused the query, or the read authorization policy refused the read. By default an actor may query only their own inbox, and may read only tasks they hold, are eligible for, or created. A read with no acting user is always refused."
+          },
           "404": {
             "content": {
               "application/json": {
@@ -1190,6 +1200,16 @@
               }
             },
             "description": "No such task, task type or route."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request could not be completed. A failure to resolve group membership lands here rather than on 403: the engine could not decide, which is not the same as deciding against the caller."
           }
         },
         "summary": "Read one task."
@@ -1247,7 +1267,7 @@
                 }
               }
             },
-            "description": "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox."
+            "description": "The acting actor is not eligible for the task or is not its assignee, the query authorization policy refused the query, or the read authorization policy refused the read. By default an actor may query only their own inbox, and may read only tasks they hold, are eligible for, or created. A read with no acting user is always refused."
           },
           "404": {
             "content": {
@@ -1335,7 +1355,7 @@
                 }
               }
             },
-            "description": "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox."
+            "description": "The acting actor is not eligible for the task or is not its assignee, the query authorization policy refused the query, or the read authorization policy refused the read. By default an actor may query only their own inbox, and may read only tasks they hold, are eligible for, or created. A read with no acting user is always refused."
           },
           "404": {
             "content": {
@@ -1423,7 +1443,7 @@
                 }
               }
             },
-            "description": "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox."
+            "description": "The acting actor is not eligible for the task or is not its assignee, the query authorization policy refused the query, or the read authorization policy refused the read. By default an actor may query only their own inbox, and may read only tasks they hold, are eligible for, or created. A read with no acting user is always refused."
           },
           "404": {
             "content": {
@@ -1511,7 +1531,7 @@
                 }
               }
             },
-            "description": "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox."
+            "description": "The acting actor is not eligible for the task or is not its assignee, the query authorization policy refused the query, or the read authorization policy refused the read. By default an actor may query only their own inbox, and may read only tasks they hold, are eligible for, or created. A read with no acting user is always refused."
           },
           "404": {
             "content": {
@@ -1599,7 +1619,7 @@
                 }
               }
             },
-            "description": "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox."
+            "description": "The acting actor is not eligible for the task or is not its assignee, the query authorization policy refused the query, or the read authorization policy refused the read. By default an actor may query only their own inbox, and may read only tasks they hold, are eligible for, or created. A read with no acting user is always refused."
           },
           "404": {
             "content": {
@@ -1659,6 +1679,16 @@
             },
             "description": "The operation succeeded."
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The acting actor is not eligible for the task or is not its assignee, the query authorization policy refused the query, or the read authorization policy refused the read. By default an actor may query only their own inbox, and may read only tasks they hold, are eligible for, or created. A read with no acting user is always refused."
+          },
           "404": {
             "content": {
               "application/json": {
@@ -1668,6 +1698,16 @@
               }
             },
             "description": "No such task, task type or route."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request could not be completed. A failure to resolve group membership lands here rather than on 403: the engine could not decide, which is not the same as deciding against the caller."
           }
         },
         "summary": "Read a task's transition history."
@@ -1725,7 +1765,7 @@
                 }
               }
             },
-            "description": "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox."
+            "description": "The acting actor is not eligible for the task or is not its assignee, the query authorization policy refused the query, or the read authorization policy refused the read. By default an actor may query only their own inbox, and may read only tasks they hold, are eligible for, or created. A read with no acting user is always refused."
           },
           "404": {
             "content": {
@@ -1813,7 +1853,7 @@
                 }
               }
             },
-            "description": "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox."
+            "description": "The acting actor is not eligible for the task or is not its assignee, the query authorization policy refused the query, or the read authorization policy refused the read. By default an actor may query only their own inbox, and may read only tasks they hold, are eligible for, or created. A read with no acting user is always refused."
           },
           "404": {
             "content": {
@@ -1901,7 +1941,7 @@
                 }
               }
             },
-            "description": "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox."
+            "description": "The acting actor is not eligible for the task or is not its assignee, the query authorization policy refused the query, or the read authorization policy refused the read. By default an actor may query only their own inbox, and may read only tasks they hold, are eligible for, or created. A read with no acting user is always refused."
           },
           "404": {
             "content": {
@@ -1989,7 +2029,7 @@
                 }
               }
             },
-            "description": "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox."
+            "description": "The acting actor is not eligible for the task or is not its assignee, the query authorization policy refused the query, or the read authorization policy refused the read. By default an actor may query only their own inbox, and may read only tasks they hold, are eligible for, or created. A read with no acting user is always refused."
           },
           "404": {
             "content": {
@@ -2077,7 +2117,7 @@
                 }
               }
             },
-            "description": "The acting actor is not eligible for the task or is not its assignee, or the query authorization policy refused the query. By default an actor may query only their own inbox."
+            "description": "The acting actor is not eligible for the task or is not its assignee, the query authorization policy refused the query, or the read authorization policy refused the read. By default an actor may query only their own inbox, and may read only tasks they hold, are eligible for, or created. A read with no acting user is always refused."
           },
           "404": {
             "content": {

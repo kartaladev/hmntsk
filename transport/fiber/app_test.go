@@ -25,6 +25,33 @@ func TestBindingPassesTheSharedSuite(t *testing.T) {
 	transporttest.RunSuite(t, mount)
 }
 
+// TestRequestValuesOutliveTheirRequest guards against fasthttp's buffer reuse.
+//
+// Fiber hands out strings and byte slices that point into buffers fasthttp
+// reuses for the next request. The engine keeps what it is given — who created
+// a task, its payload — long after the handler returns, so a binder passing
+// those values on uncopied lets the next caller overwrite a stored creator with
+// their own name. A same-length actor is what makes that visible.
+func TestRequestValuesOutliveTheirRequest(t *testing.T) {
+	t.Parallel()
+
+	client, api := transporttest.NewClient(t, mount)
+
+	task := client.CreateApproval(t)
+
+	// Any later request by an actor whose name is as long as the creator's.
+	require.Len(t, transporttest.Carol, len(transporttest.Owner))
+	client.Do(t, "GET", "/tasks/count?candidate=me", transporttest.Carol, nil)
+
+	stored, err := api.Service().Get(t.Context(), task.ID)
+	require.NoError(t, err)
+
+	require.Equal(t, transporttest.Owner, stored.CreatedBy,
+		"the creator the engine stored must not change when the next request arrives")
+	require.JSONEq(t, `{"amount":100,"justification":"new laptop"}`, string(stored.Input),
+		"the payload the engine stored must not change either")
+}
+
 // mount serves the contract on a real listener, behind the middleware that
 // stands in for the host's own.
 func mount(t *testing.T, api *transportcore.API) transporttest.Binding {

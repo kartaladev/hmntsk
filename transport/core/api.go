@@ -21,9 +21,10 @@ const DefaultBasePath = "/v1"
 
 // API is the REST contract over an engine.
 type API struct {
-	service    *hmntsk.Service
-	basePath   string
-	authorizer QueryAuthorizer
+	service        *hmntsk.Service
+	basePath       string
+	authorizer     QueryAuthorizer
+	readAuthorizer TaskReadAuthorizer
 }
 
 // Option configures an [API].
@@ -41,16 +42,20 @@ func WithBasePath(path string) Option {
 
 // New returns the contract over an engine.
 //
-// With no options it serves under [DefaultBasePath] and authorizes queries with
-// [SelfOnly], so an actor may read only their own inbox. A contradictory or
-// empty option, such as a nil query policy, is a configuration error here,
-// before any traffic.
+// With no options it serves under [DefaultBasePath], authorizes queries with
+// [SelfOnly], so an actor may query only their own inbox, and authorizes
+// single-task reads with [ParticipantsOnly], so an actor may read only tasks
+// they hold, created or are eligible for. A contradictory or empty option, such
+// as a nil policy, is a configuration error here, before any traffic.
 func New(service *hmntsk.Service, opts ...Option) (*API, error) {
 	if service == nil {
 		return nil, &hmntsk.ConfigurationError{Detail: "a service is required to serve the API"}
 	}
 
-	api := &API{service: service, basePath: DefaultBasePath, authorizer: SelfOnly}
+	api := &API{
+		service: service, basePath: DefaultBasePath,
+		authorizer: SelfOnly, readAuthorizer: ParticipantsOnly,
+	}
 
 	for _, opt := range opts {
 		opt(api)
@@ -59,6 +64,12 @@ func New(service *hmntsk.Service, opts ...Option) (*API, error) {
 	if api.authorizer == nil {
 		return nil, &hmntsk.ConfigurationError{
 			Detail: "WithQueryAuthorizer was given no policy; pass transportcore.AllowAll to permit every query",
+		}
+	}
+
+	if api.readAuthorizer == nil {
+		return nil, &hmntsk.ConfigurationError{
+			Detail: "WithTaskReadAuthorizer was given no policy; pass transportcore.AllowAll to permit every read",
 		}
 	}
 
@@ -217,7 +228,7 @@ func (a *API) createTask(ctx context.Context, req Request) Response {
 
 // getTask answers GET /tasks/{id}.
 func (a *API) getTask(ctx context.Context, req Request) Response {
-	task, err := a.service.Get(ctx, hmntsk.TaskID(req.Param("id")))
+	task, err := a.authorizedTask(ctx, req)
 	if err != nil {
 		return fail(err)
 	}
@@ -227,14 +238,14 @@ func (a *API) getTask(ctx context.Context, req Request) Response {
 
 // getHistory answers GET /tasks/{id}/history.
 func (a *API) getHistory(ctx context.Context, req Request) Response {
-	id := hmntsk.TaskID(req.Param("id"))
-
-	// A history read on a task that does not exist is a 404, not an empty log.
-	if _, err := a.service.Get(ctx, id); err != nil {
+	// A history read on a task that does not exist is a 404, not an empty log,
+	// and one the policy refuses reads no history at all.
+	task, err := a.authorizedTask(ctx, req)
+	if err != nil {
 		return fail(err)
 	}
 
-	records, err := a.service.History(ctx, id)
+	records, err := a.service.History(ctx, task.ID)
 	if err != nil {
 		return fail(err)
 	}
@@ -281,6 +292,32 @@ func (a *API) countTasks(ctx context.Context, req Request) Response {
 	return encode(StatusOK, CountResponse{Count: count})
 }
 
+// authorizedTask reads the task a single-task request names, in the order the
+// contract promises: a read with no acting user is refused before the store is
+// touched, so an anonymous caller cannot probe which identifiers exist; an
+// unknown task is then a 404; and only a task that exists is put to the read
+// policy, because there is nothing to decide about one that does not.
+func (a *API) authorizedTask(ctx context.Context, req Request) (hmntsk.Task, error) {
+	if req.Actor == "" {
+		return hmntsk.Task{}, refuse(errors.New("reading a task needs an acting user"))
+	}
+
+	task, err := a.service.Get(ctx, hmntsk.TaskID(req.Param("id")))
+	if err != nil {
+		return hmntsk.Task{}, err
+	}
+
+	read := NewTaskRead(req.Actor, task, func(ctx context.Context) (bool, error) {
+		return a.service.Eligible(ctx, task, req.Actor)
+	})
+
+	if err := a.readAuthorizer.AuthorizeRead(ctx, read); err != nil {
+		return hmntsk.Task{}, refuse(err)
+	}
+
+	return task, nil
+}
+
 // authorizedQuery turns a query request into the query the engine runs, in the
 // order the contract promises: parse it, resolve [Me] against the acting user,
 // then ask the policy. A malformed request is a 400 before anyone is asked
@@ -298,16 +335,14 @@ func (a *API) authorizedQuery(ctx context.Context, req Request) (hmntsk.Query, e
 		}
 
 		if req.Actor == "" {
-			return hmntsk.Query{}, &queryRefusedError{
-				cause: errors.New("the query names me, but no acting user is established"),
-			}
+			return hmntsk.Query{}, refuse(errors.New("the query names me, but no acting user is established"))
 		}
 
 		*named = req.Actor
 	}
 
 	if err := a.authorizer.AuthorizeQuery(ctx, req.Actor, query); err != nil {
-		return hmntsk.Query{}, &queryRefusedError{cause: err}
+		return hmntsk.Query{}, refuse(err)
 	}
 
 	return query, nil
