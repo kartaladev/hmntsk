@@ -43,6 +43,26 @@ linters:
             - github.com/go-sql-driver/mysql
             - github.com/lib/pq
             - modernc.org/sqlite
+        # notify moves to its own repository before its first tag too, and may
+        # build on sqlkit, which moves out first. The same early-warning caveat
+        # applies: `make split-check` is authoritative.
+        notify:
+          list-mode: strict
+          files:
+            - "**/notify/**"
+          allow:
+            - $gostd
+            - github.com/kartaladev/hmntsk/notify
+            - github.com/kartaladev/hmntsk/sqlkit
+            - github.com/stretchr/testify
+            - go.uber.org/goleak
+            - go.uber.org/mock
+            - github.com/jackc/pgx/v5
+            - gorm.io
+            - github.com/glebarez/sqlite
+            - github.com/go-sql-driver/mysql
+            - github.com/lib/pq
+            - modernc.org/sqlite
     errcheck:
       check-type-assertions: true
     gocritic:
