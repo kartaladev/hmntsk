@@ -106,16 +106,16 @@ jobs:
         working-directory: ${{ matrix.module }}
         run: go test -count=1 -timeout 30m -run "^${{ matrix.run }}$" ./...
 
-  # The two sinks. The webhook sink needs only an HTTP test server; the Redis
-  # sink starts a broker through testcontainers, against the runner's own Docker
-  # daemon, in the same way the store suite starts its databases.
+  # The sinks. The webhook sink needs only an HTTP test server; the Redis and
+  # NATS sinks start a broker through testcontainers, against the runner's own
+  # Docker daemon, in the same way the store suite starts its databases.
   delivery:
     name: delivery ${{ matrix.module }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        module: [delivery/webhook, delivery/redis]
+        module: [delivery/webhook, delivery/redis, delivery/nats]
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6

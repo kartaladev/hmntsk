@@ -1,6 +1,6 @@
 # Releasing
 
-Fourteen modules live in this repository and each is tagged and released
+Fifteen modules live in this repository and each is tagged and released
 independently. That is ongoing operational cost, accepted deliberately: it is
 what keeps `go get github.com/kartaladev/hmntsk` free of pgx, GORM, gin and
 Fiber, which is the entire point of the split.
@@ -23,6 +23,7 @@ subdirectory is tagged with its path as the prefix:
 | `github.com/kartaladev/hmntsk/transport/fiber` | `transport/fiber/v1.2.3` |
 | `github.com/kartaladev/hmntsk/delivery/webhook` | `delivery/webhook/v1.2.3` |
 | `github.com/kartaladev/hmntsk/delivery/redis` | `delivery/redis/v1.2.3` |
+| `github.com/kartaladev/hmntsk/delivery/nats` | `delivery/nats/v1.2.3` |
 | `github.com/kartaladev/hmntsk/storetest` | `storetest/v1.2.3` |
 | `github.com/kartaladev/hmntsk/transporttest` | `transporttest/v1.2.3` |
 | `github.com/kartaladev/hmntsk/relaytest` | `relaytest/v1.2.3` |
@@ -47,9 +48,10 @@ A module can only be released after everything it depends on, because its
 9.  store/gorm             depends on core, sqlcore   (+ storetest, relaytest, for tests)
 10. delivery/webhook       depends on core            (+ relaytest, for tests)
 11. delivery/redis         depends on core            (+ relaytest, for tests)
-12. transport/http         depends on core, transport/core (+ transporttest)
-13. transport/gin          depends on core, transport/core (+ transporttest)
-14. transport/fiber        depends on core, transport/core (+ transporttest)
+12. delivery/nats          depends on core            (+ relaytest, for tests)
+13. transport/http         depends on core, transport/core (+ transporttest)
+14. transport/gin          depends on core, transport/core (+ transporttest)
+15. transport/fiber        depends on core, transport/core (+ transporttest)
 ```
 
 Core and `store/sql` land first and prove the shape; the rest follow. `make
@@ -76,7 +78,7 @@ go: github.com/kartaladev/hmntsk/delivery/webhook imports
 	found (v0.0.0-...), but does not contain package github.com/kartaladev/hmntsk/relay
 ```
 
-`delivery/webhook`, `delivery/redis` and `relaytest` all import
+`delivery/webhook`, `delivery/redis`, `delivery/nats` and `relaytest` all import
 `github.com/kartaladev/hmntsk/relay`, so `make tidy` fails for the whole
 workspace until core is tagged with that package. This is not a
 misconfiguration and there is nothing to fix in those modules: `go build`,
@@ -102,7 +104,7 @@ done
 go work sync
 ```
 
-Curate the three affected modules' `go.mod` files by hand in the meantime,
+Curate the four affected modules' `go.mod` files by hand in the meantime,
 following the shape `store/sql` uses. After the core tag that first contains
 `relay`, `make tidy` works again for everything.
 
