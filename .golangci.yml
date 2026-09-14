@@ -63,6 +63,11 @@ linters:
             - github.com/go-sql-driver/mysql
             - github.com/lib/pq
             - modernc.org/sqlite
+            # The realtime adapters: each imports notify and its own client.
+            - github.com/coder/websocket
+            - github.com/redis/go-redis/v9
+            - github.com/nats-io/nats.go
+            - github.com/testcontainers/testcontainers-go
     errcheck:
       check-type-assertions: true
     gocritic:
