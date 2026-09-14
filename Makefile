@@ -11,20 +11,26 @@ SQLKIT_MODULES := sqlkit sqlkit/sqlkittest sqlkit/stdsql sqlkit/pgx sqlkit/gorm
 NOTIFY_MODULES := notify notify/notifytest notify/sqlstore \
                   notify/websocket notify/redis notify/nats
 
-# GROUP narrows every per-module target to one group: all, hmntsk, sqlkit or
-# notify. `make test GROUP=sqlkit` runs only the sqlkit modules.
+# The examples import every group and are never tagged, so they belong to no
+# future repository and never appear in RELEASE_ORDER.
+EXAMPLES_MODULES := examples
+
+# GROUP narrows every per-module target to one group: all, hmntsk, sqlkit,
+# notify or examples. `make test GROUP=sqlkit` runs only the sqlkit modules.
 GROUP ?= all
 
 ifeq ($(GROUP),all)
-MODULES := $(HMNTSK_MODULES) $(SQLKIT_MODULES) $(NOTIFY_MODULES)
+MODULES := $(HMNTSK_MODULES) $(SQLKIT_MODULES) $(NOTIFY_MODULES) $(EXAMPLES_MODULES)
 else ifeq ($(GROUP),hmntsk)
 MODULES := $(HMNTSK_MODULES)
 else ifeq ($(GROUP),sqlkit)
 MODULES := $(SQLKIT_MODULES)
 else ifeq ($(GROUP),notify)
 MODULES := $(NOTIFY_MODULES)
+else ifeq ($(GROUP),examples)
+MODULES := $(EXAMPLES_MODULES)
 else
-$(error GROUP must be all, hmntsk, sqlkit or notify, not "$(GROUP)")
+$(error GROUP must be all, hmntsk, sqlkit, notify or examples, not "$(GROUP)")
 endif
 
 # RELEASE_ORDER is the order the hmntsk modules must be tagged in: a module can
@@ -55,9 +61,34 @@ GOTOOLCHAIN ?= go1.26.8
 export GOTOOLCHAIN
 
 .PHONY: all build lint split-check fmt test test-integration test-race tidy vuln generate \
-        store-matrix relay-matrix executor-matrix notify-store-matrix transport-matrix release-order clean
+        store-matrix relay-matrix executor-matrix notify-store-matrix transport-matrix release-order clean \
+        ui-build ui-test ui-audit
 
 all: lint split-check test
+
+# The contextual-ui example's page is a React app. Its build is committed and
+# embedded, so nothing above needs Node; only changing the page does.
+UI_DIR := examples/contextual-ui/web
+NPM ?= npm
+
+# npm writes this file on every install, so it is newer than the lockfile
+# exactly when node_modules matches it: `npm ci` runs only when it is stale.
+UI_DEPS := $(UI_DIR)/node_modules/.package-lock.json
+
+$(UI_DEPS): $(UI_DIR)/package-lock.json
+	$(NPM) --prefix $(UI_DIR) ci
+
+## ui-build: rebuild examples/contextual-ui/dist from the page's source.
+ui-build: $(UI_DEPS)
+	$(NPM) --prefix $(UI_DIR) run build
+
+## ui-test: run the page's unit tests.
+ui-test: $(UI_DEPS)
+	$(NPM) --prefix $(UI_DIR) test
+
+## ui-audit: audit the page's runtime dependencies; govulncheck does not see npm.
+ui-audit: $(UI_DEPS)
+	$(NPM) --prefix $(UI_DIR) audit --omit=dev --audit-level=high
 
 ## build: compile every module in the workspace.
 build:

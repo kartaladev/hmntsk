@@ -12,6 +12,10 @@ r, err := relay.NewRelay(svc,
 go r.Run(ctx, 10*time.Second)   // yours to start, and yours to stop
 ```
 
+[`examples/event-delivery`](../examples/event-delivery) runs this with a signed
+webhook: the default destination policy refusing a loopback receiver, then an
+override that reaches it, and a receiver that verifies every delivery.
+
 Nothing starts on its own. Constructing a relay begins no goroutine, no timer
 and no polling, exactly as constructing a sweeper does not.
 

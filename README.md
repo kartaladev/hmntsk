@@ -346,6 +346,9 @@ per-dialect workflow.
 - [docs/releasing.md](docs/releasing.md) — module tagging scheme and release order
 - Runnable examples: `Example`, `Example_hostLedTransaction`, `Example_typedFacade`
   in [`example_test.go`](example_test.go)
+- [examples/](examples/README.md): runnable, tested scenarios for each capability,
+  each showing the default and then an override, plus a browser demo of a
+  contextual inbox
 
 ## Development
 

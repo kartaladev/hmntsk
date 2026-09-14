@@ -46,10 +46,10 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: "**/go.sum"
-      - name: Core, sqlcore, sqlkit, notify and contract tests
+      - name: Core, sqlcore, sqlkit, notify, contract tests and examples
         run: |
           set -e
-          for module in . store/sqlcore sqlkit notify notify/notifytest transport/core storetest transporttest relaytest tasknotify; do
+          for module in . store/sqlcore sqlkit notify notify/notifytest transport/core storetest transporttest relaytest tasknotify examples; do
             echo "==> $module"
             (cd "$module" && go test -count=1 ./...)
           done
@@ -265,9 +265,34 @@ jobs:
       # regenerates are the ones the build compiles against.
       - name: Install mockgen
         run: go install go.uber.org/mock/mockgen@v0.6.0
+      # The contextual-ui example's page is built into examples/contextual-ui/dist and
+      # committed, so that `go run` needs no Node. Rebuilding it here catches a
+      # source change that was never rebuilt.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: examples/contextual-ui/web/package-lock.json
       - name: Regenerate and diff
         run: |
           set -e
           (cd transport/core && go test -count=1 -run TestOpenAPIDocument -update ./...)
           go generate ./...
+          make ui-build
           git diff --exit-code
+
+  # The page's own logic: route expansion kept identical to hmntsk.ExpandRoute,
+  # the schema form walker and the bucket queries. govulncheck does not see npm,
+  # so the page's runtime dependencies are audited here.
+  examples-ui:
+    name: examples ui
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: examples/contextual-ui/web/package-lock.json
+      - run: make ui-test
+      - run: make ui-audit

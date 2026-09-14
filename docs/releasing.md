@@ -1,6 +1,6 @@
 # Releasing
 
-Twenty-seven modules live in this repository. Sixteen make up hmntsk and are tagged
+Twenty-eight modules live in this repository. Sixteen make up hmntsk and are tagged
 and released from here, each independently. That is ongoing operational cost,
 accepted deliberately: it is what keeps `go get github.com/kartaladev/hmntsk`
 free of pgx, GORM, gin and Fiber, which is the entire point of the split.
@@ -19,6 +19,12 @@ library and its realtime adapters. Like sqlkit, they are developed here, never
 tagged from here, and move to their own repository before their first release
 (step 0b below). `make split-check` fails the build if anything under `notify/`
 imports a module other than notify or sqlkit.
+
+The remaining one is `examples`, the runnable usage scenarios.
+`examples` is never tagged, here or anywhere: it is documentation that compiles,
+and nobody requires it. It is in `go.work` and in every `make` target, so a change that breaks a
+scenario fails the build, and it is in no release step. When sqlkit and notify
+move out, the split rewrites the examples' imports in the same pass.
 
 ## Tagging scheme
 
