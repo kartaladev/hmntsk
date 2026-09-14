@@ -28,6 +28,7 @@ export function NotificationBell({ user, onChange }: Props) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [items, setItems] = useState<Notification[]>([]);
   const [live, setLive] = useState(false);
+  const [problem, setProblem] = useState<string>();
 
   const reloadCount = useCallback(() => {
     api.unread().then(({ count }) => setUnread(count), () => setUnread(undefined));
@@ -56,15 +57,26 @@ export function NotificationBell({ user, onChange }: Props) {
   // The list is read only while it is shown, and again whenever the count moves.
   useEffect(() => {
     if (!open) {
+      setProblem(undefined);
+
       return;
     }
 
     api.notifications().then(({ notifications }) => setItems(notifications), () => setItems([]));
   }, [open, unread]);
 
+  // Marking read can fail, for instance once the session has ended. The menu
+  // says so, and the count is read again either way, so the badge shows what the
+  // server holds rather than what the click hoped for.
   const markRead = async (id: string) => {
-    await api.markRead(id);
-    reloadCount();
+    try {
+      await api.markRead(id);
+      setProblem(undefined);
+    } catch (e) {
+      setProblem(`Could not mark it read: ${(e as Error).message}`);
+    } finally {
+      reloadCount();
+    }
   };
 
   return (
@@ -86,6 +98,11 @@ export function NotificationBell({ user, onChange }: Props) {
       >
         <Box sx={{ px: 2, py: 1 }}>
           <Typography variant="subtitle2">Unread</Typography>
+          {problem && (
+            <Typography variant="body2" color="error" role="alert" sx={{ mt: 0.5 }}>
+              {problem}
+            </Typography>
+          )}
         </Box>
         <Divider />
         {items.length === 0 && (

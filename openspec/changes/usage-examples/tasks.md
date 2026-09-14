@@ -102,3 +102,6 @@ Every scenario is built test-first: write `main_test.go` with the expected trans
   - "Load more" drops a page for a bucket no longer shown and reports its errors (checked by typecheck and review only: the component has no test harness, and the seeded buckets never fill a 20-task page, so the button does not appear in the demo);
   - a number field holding only spaces is left out, not sent as 0 (Vitest).
 - [x] 15.6 Run the full check and `make ui-test`, validate this change, update the PR description's library findings and test plan, and push the rebased branch
+- [x] 15.7 Fix the second code review's two findings:
+  - `realtime-scaling`'s `openStream` wraps the read error only when the read failed, and otherwise names the status and first line (`TestOpenStream` table with local servers; red on `%!w(<nil>)`, then green);
+  - the notification menu reports a failed mark-read and reads the count again (checked in the browser by ending the session with the menu open: the menu shows the server's refusal).

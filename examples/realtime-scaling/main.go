@@ -529,11 +529,20 @@ func openStream(ctx context.Context, base, actor string) (*stream, error) {
 	lines := bufio.NewReader(resp.Body)
 
 	first, err := lines.ReadString('\n')
-	if err != nil || resp.StatusCode != http.StatusOK || strings.TrimSpace(first) != ": connected" {
+	if err != nil {
 		cancel()
 		_ = resp.Body.Close()
 
 		return nil, fmt.Errorf("open stream: status %d, first line %q: %w", resp.StatusCode, first, err)
+	}
+
+	// The read worked, so there is no error to wrap: the server answered, just
+	// not with an open stream.
+	if resp.StatusCode != http.StatusOK || strings.TrimSpace(first) != ": connected" {
+		cancel()
+		_ = resp.Body.Close()
+
+		return nil, fmt.Errorf("open stream: status %d, first line %q", resp.StatusCode, first)
 	}
 
 	s := &stream{cancel: cancel, body: resp.Body, data: make(chan string, 8), done: make(chan struct{})}
