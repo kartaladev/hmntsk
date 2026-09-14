@@ -29,6 +29,8 @@ type MemoryStore struct {
 	// coalescing and expiring watermarks touch one subject's notifications
 	// rather than every notification.
 	subjects map[string]map[string]struct{}
+	// deliveries holds email delivery state by notification identifier.
+	deliveries map[string]emailDelivery
 }
 
 // watermarkKey identifies a subject's close record for one kind, or for every
@@ -61,6 +63,7 @@ func NewMemoryStore() *MemoryStore {
 		watermarks:    make(map[watermarkKey]watermark),
 		sources:       make(map[sourceKey]string),
 		subjects:      make(map[string]map[string]struct{}),
+		deliveries:    make(map[string]emailDelivery),
 	}
 }
 

@@ -96,3 +96,38 @@ func Factory(executor sqlkit.Executor) notifytest.Factory {
 		return NewStore(t, executor)
 	}
 }
+
+// NewEmailStore builds a store like [NewStore] whose email delivery table is
+// migrated too, and dropped when the test ends.
+func NewEmailStore(t *testing.T, executor sqlkit.Executor) *sqlstore.Store {
+	t.Helper()
+
+	store := NewStore(t, executor)
+	require.NoError(t, store.MigrateEmail(t.Context()), "migrate the %s email schema", executor.Dialect().Name())
+
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		execer, ok := executor.(sqlkit.Execer)
+		if !ok {
+			return
+		}
+
+		if err := sqlkit.DropTables(ctx, execer, executor.Dialect(), store.EmailTables()); err != nil {
+			t.Errorf("drop the email tables: %s", err)
+		}
+	})
+
+	return store
+}
+
+// EmailFactory returns an email conformance factory building a store over an
+// executor, on freshly migrated tables for every case.
+func EmailFactory(executor sqlkit.Executor) notifytest.EmailFactory {
+	return func(t *testing.T) notifytest.EmailStore {
+		t.Helper()
+
+		return NewEmailStore(t, executor)
+	}
+}

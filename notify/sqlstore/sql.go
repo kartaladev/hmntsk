@@ -244,6 +244,11 @@ func scanNotification(rows sqlkit.Rows) (notify.Notification, error) {
 		return notify.Notification{}, fmt.Errorf("sqlstore: scan a notification: %w", err)
 	}
 
+	return decodeNotification(values)
+}
+
+// decodeNotification reads column values selected with notificationColumns.
+func decodeNotification(values []any) (notify.Notification, error) {
 	var d decoder
 
 	n := notify.Notification{
