@@ -19,6 +19,7 @@ use (
 	./store/sql
 	./store/sqlcore
 	./storetest
+	./tasknotify
 	./transport/core
 	./transport/fiber
 	./transport/gin

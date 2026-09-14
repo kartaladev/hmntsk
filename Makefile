@@ -4,7 +4,7 @@
 HMNTSK_MODULES := . store/sqlcore store/sql store/pgx store/gorm \
                   transport/core transport/http transport/gin transport/fiber \
                   delivery/webhook delivery/redis delivery/nats \
-                  storetest transporttest relaytest
+                  storetest transporttest relaytest tasknotify
 
 SQLKIT_MODULES := sqlkit sqlkit/sqlkittest sqlkit/stdsql sqlkit/pgx sqlkit/gorm
 
@@ -36,7 +36,8 @@ endif
 RELEASE_ORDER := . store/sqlcore storetest relaytest transport/core transporttest \
                  store/sql store/pgx store/gorm \
                  delivery/webhook delivery/redis delivery/nats \
-                 transport/http transport/gin transport/fiber
+                 transport/http transport/gin transport/fiber \
+                 tasknotify
 
 GO ?= go
 GOLANGCI_LINT ?= golangci-lint

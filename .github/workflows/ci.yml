@@ -49,7 +49,7 @@ jobs:
       - name: Core, sqlcore, sqlkit, notify and contract tests
         run: |
           set -e
-          for module in . store/sqlcore sqlkit notify notify/notifytest transport/core storetest transporttest relaytest; do
+          for module in . store/sqlcore sqlkit notify notify/notifytest transport/core storetest transporttest relaytest tasknotify; do
             echo "==> $module"
             (cd "$module" && go test -count=1 ./...)
           done
