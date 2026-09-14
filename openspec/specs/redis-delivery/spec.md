@@ -22,7 +22,7 @@ The system SHALL NOT remove any entry from the published stream unless the host 
 
 ### Requirement: The host can bound the stream by length
 
-The system SHALL allow the host to configure a maximum stream length. Each publish SHALL trim the stream towards that length. Trimming SHALL be approximate: after a publish the stream SHALL hold at least the configured number of entries whenever at least that many have been published, and MAY hold more.
+The system SHALL allow the host to configure a maximum stream length. Each publish SHALL trim the stream towards that length. By default trimming SHALL be approximate: after a publish the stream SHALL hold at least the configured number of entries whenever at least that many have been published, and MAY hold more. When the host opts into exact trimming, after a publish the stream SHALL hold exactly the configured number of entries whenever at least that many have been published. The system SHALL document that exact trimming costs the broker more work on every publish and is not limited per publish.
 
 #### Scenario: A length bound trims the oldest entries
 
@@ -39,9 +39,19 @@ The system SHALL allow the host to configure a maximum stream length. Each publi
 - **WHEN** a length bound is configured without a trim mode and the broker predates trim modes
 - **THEN** the event is delivered and the stream is trimmed
 
+#### Scenario: Exact trimming holds exactly the bound
+
+- **WHEN** a length bound of 2 and exact trimming are configured, the broker's stream nodes each hold many entries, and 10 events are published
+- **THEN** the stream holds exactly the 2 most recent entries
+
+#### Scenario: Exact trimming without a bound is refused
+
+- **WHEN** a host opts into exact trimming without configuring a length or age bound
+- **THEN** construction fails with a configuration error
+
 ### Requirement: The host can bound the stream by age
 
-The system SHALL allow the host to configure a maximum entry age. Each publish SHALL trim entries whose stream identifier is older than the sink's current time minus that age. Trimming SHALL be approximate: no entry newer than the cutoff SHALL be removed, and entries older than the cutoff MAY remain.
+The system SHALL allow the host to configure a maximum entry age. Each publish SHALL trim entries whose stream identifier is older than the sink's current time minus that age. By default trimming SHALL be approximate: no entry newer than the cutoff SHALL be removed, and entries older than the cutoff MAY remain. When the host opts into exact trimming, a publish SHALL remove every entry older than the cutoff.
 
 #### Scenario: An age bound trims entries older than the cutoff
 
@@ -52,6 +62,11 @@ The system SHALL allow the host to configure a maximum entry age. Each publish S
 
 - **WHEN** the sink is given a clock and an age bound
 - **THEN** the cutoff is computed from that clock rather than from the host's wall time
+
+#### Scenario: Exact trimming removes every entry older than the cutoff
+
+- **WHEN** an age bound and exact trimming are configured, the broker's stream nodes each hold many entries, and the stream holds a few entries older and newer than the cutoff
+- **THEN** a publish leaves no entry older than the cutoff and keeps every newer one
 
 ### Requirement: The host chooses how trimming treats consumer groups
 
