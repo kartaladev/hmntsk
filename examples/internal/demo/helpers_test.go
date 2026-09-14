@@ -122,38 +122,3 @@ func TestBackground(t *testing.T) {
 
 	assert.True(t, finished.Load(), "stop returns only once run has returned")
 }
-
-func TestWaitUntil(t *testing.T) {
-	t.Parallel()
-
-	type testCase struct {
-		name      string
-		condition func() func() bool
-		assert    func(t *testing.T, err error)
-	}
-
-	cases := []testCase{
-		{
-			name: "returns once the condition holds",
-			condition: func() func() bool {
-				var calls atomic.Int32
-
-				return func() bool { return calls.Add(1) >= 3 }
-			},
-			assert: func(t *testing.T, err error) { require.NoError(t, err) },
-		},
-		{
-			name:      "gives up after the timeout",
-			condition: func() func() bool { return func() bool { return false } },
-			assert:    func(t *testing.T, err error) { assert.Error(t, err) },
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			tc.assert(t, demo.WaitUntil(tc.condition(), 50*time.Millisecond))
-		})
-	}
-}

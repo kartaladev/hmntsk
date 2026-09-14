@@ -11,7 +11,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useEffect, useMemo, useState } from "react";
 
-import { ApiError, api, type Issue, type Task, type TaskType } from "./api";
+import { ApiError, api, isStale, type Issue, type Task, type TaskType } from "./api";
 import { Due } from "./format";
 import { fieldsFromSchema, outputFromValues, withBooleanDefaults, type Field } from "./schemaForm";
 import { StatusChip } from "./StatusChip";
@@ -99,7 +99,18 @@ export function TaskPanel({ id, user, types, onChange }: Props) {
       setTask(updated);
       onChange();
     } catch (e) {
-      if (e instanceof ApiError) {
+      if (isStale(e)) {
+        // Someone else acted on the task, or it moved on its own: show it as it
+        // is now, keeping whatever the form holds.
+        try {
+          setTask(await api.task(task.id));
+          setProblem("This task changed while you had it open. It now shows the latest; try again if you still can.");
+        } catch (reread) {
+          setProblem((reread as Error).message);
+        }
+
+        onChange();
+      } else if (e instanceof ApiError) {
         setIssues(e.issues);
         if (e.issues.length === 0) {
           setProblem(`${e.code}: ${e.message}`);

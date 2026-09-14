@@ -94,6 +94,14 @@ export class ApiError extends Error {
   }
 }
 
+// isStale reports that the task changed since the page read it. The contract
+// answers 409 both for a version the page no longer holds and for an operation
+// the task's current state refuses, such as claiming a task someone else just
+// claimed; either way the page's copy is out of date and should be read again.
+export function isStale(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 409;
+}
+
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const response = await fetch(path, {
     method,

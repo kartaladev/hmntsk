@@ -88,3 +88,17 @@ Every scenario is built test-first: write `main_test.go` with the expected trans
 - [x] 14.6 Test-first page logic with Vitest: `matchPage`, workflow steps from an invoice's tasks, initials; verify red then green with `make ui-test`
 - [x] 14.7 Build the pages with Material UI: sign-in page with the "not authentication" notice, app bar with navigation and avatar menu with sign-out, inbox without a switcher, orders page with the order form and list, invoice page with details, steps and the task card; `make ui-build` and commit `dist/`
 - [x] 14.8 Update `contextual-ui/README.md`, `examples/README.md` and doc links; run `/simplify` over the change; run the full check and verify every spec scenario manually in a browser with `go run ./contextual-ui`
+
+## 15. After the library fixes (PR #15)
+
+- [x] 15.1 Rebase onto `main` with PR #15 merged; verify `go build`, `go vet` and the scenario tests pass unchanged before touching any workaround
+- [x] 15.2 Test-first `demo.RunHub`: returns once the hub is ready, returns the broadcaster's error when it cannot subscribe, gives up on timeout, and stops on a cancelled context, with the hub stopped on every failure; verify red against a stub, then green under `-race`
+- [x] 15.3 `realtime-scaling`, `notifications`, `contextual-ui`: start hubs with `demo.RunHub`; delete the readiness probes and `demo.WaitUntil`; verify the scenario tests pass, `realtime-scaling` against its containers
+- [x] 15.4 `http-frameworks` with `fibertransport.App()`, `schema-form` with `hmntsk.WithEventHandlerFactory`, `event-bus` with `WithExactTrim()` and a default Redis in its test; update the READMEs; verify each transcript test passes unchanged
+- [x] 15.5 Fix the five code review findings test-first:
+  - the workflow sink moves the order before creating the approval, so a failed order update never leaves an approval that can be completed while the order waits in review (Go table case with an injected update failure);
+  - the task panel re-reads a task after a 409 (`isStale`, Vitest);
+  - a malformed path escape shows "no such page" instead of crashing the page (Vitest);
+  - "Load more" drops a page for a bucket no longer shown and reports its errors (checked by typecheck and review only: the component has no test harness, and the seeded buckets never fill a 20-task page, so the button does not appear in the demo);
+  - a number field holding only spaces is left out, not sent as 0 (Vitest).
+- [x] 15.6 Run the full check and `make ui-test`, validate this change, update the PR description's library findings and test plan, and push the rebased branch

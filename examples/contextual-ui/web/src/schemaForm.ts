@@ -64,6 +64,12 @@ export function outputFromValues(
         break;
       case "number":
       case "integer": {
+        // Number(" ") is 0, so a field holding only spaces would otherwise be
+        // sent as a valid zero. It is empty, like "".
+        if (String(value).trim() === "") {
+          break;
+        }
+
         const n = Number(value);
         const whole = field.kind === "integer";
 

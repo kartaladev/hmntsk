@@ -13,7 +13,15 @@ export type PageRoute =
 // task types' hmntsk.route, /invoices/{ownerRef}/{activityKey}?task={id}, and
 // works without the activity and task too.
 export function matchPage(location: { pathname: string; search: string }): PageRoute {
-  const segments = location.pathname.split("/").filter(Boolean).map(decodeURIComponent);
+  let segments: string[];
+
+  try {
+    segments = location.pathname.split("/").filter(Boolean).map(decodeURIComponent);
+  } catch {
+    // A malformed escape, from a hand-edited or truncated link, names no page.
+    return { page: "notFound" };
+  }
+
   const query = new URLSearchParams(location.search);
 
   switch (segments[0]) {

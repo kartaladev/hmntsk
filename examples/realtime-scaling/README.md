@@ -39,10 +39,12 @@ signal between them.
 - **One store for both instances:** a single in-memory store stands in for the
   database that every instance of a real application shares. What instances
   don't share by default is the broadcaster.
-- **Readiness probes:** before relying on a broker, the scenario sends a probe
-  signal until it arrives on the other instance. A hub reports running before
-  its broadcaster has subscribed, so an early signal could otherwise be lost and
-  the output would vary between runs.
+- **Waiting for readiness:** each instance waits on `hub.Ready()` before
+  relying on its broker. The channel closes only once the broadcaster has
+  confirmed its subscription, so a signal broadcast from then on reaches the
+  other instance. If the broker never confirms it, for NATS within
+  `WithSubscribeTimeout`, `hub.Run` returns an error instead, and the scenario
+  stops with it.
 
 ## What it leaves out
 

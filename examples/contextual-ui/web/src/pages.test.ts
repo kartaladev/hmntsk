@@ -26,6 +26,11 @@ describe("matchPage", () => {
     },
     { name: "an invoice needs an ID", path: "/invoices/", expected: { page: "notFound" } },
     { name: "too deep is not an invoice", path: "/invoices/INV-1/review/extra", expected: { page: "notFound" } },
+    {
+      name: "a badly escaped path is not found, rather than breaking the page",
+      path: "/invoices/%E0%A4%A",
+      expected: { page: "notFound" },
+    },
     { name: "anything else is not found", path: "/elsewhere", expected: { page: "notFound" } },
   ];
 

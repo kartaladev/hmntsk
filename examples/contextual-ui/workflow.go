@@ -55,11 +55,16 @@ func (k *workflowSink) Deliver(ctx context.Context, attempt relay.Attempt) relay
 			return outcome(k.orders.Advance(ctx, invoiceID, orderInReview, orderDisputed))
 		}
 
-		if err := k.requestApproval(ctx, invoiceID); err != nil {
+		// The order moves before the approval exists. Created first, an
+		// approval could be completed while a failed order update waited for
+		// its retry, and its decision would find no order awaiting it. This
+		// way a retry finds the order already moved, which changes nothing,
+		// and only creates the approval.
+		if err := k.orders.Advance(ctx, invoiceID, orderInReview, orderAwaitingApproval); err != nil {
 			return relay.Retryable(err)
 		}
 
-		return outcome(k.orders.Advance(ctx, invoiceID, orderInReview, orderAwaitingApproval))
+		return outcome(k.requestApproval(ctx, invoiceID))
 
 	case invoicing.ApproveType:
 		var decision struct {

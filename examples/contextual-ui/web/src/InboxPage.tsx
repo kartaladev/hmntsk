@@ -14,7 +14,7 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { api, type DemoUser, type Task, type TaskType } from "./api";
 import { AppLink } from "./AppLink";
@@ -78,14 +78,34 @@ export function InboxPage({ user, types, revision }: Props) {
     };
   }, [user.id, bucket]);
 
+  // shown is the bucket the list currently shows. A page that arrives after
+  // the viewer chose another bucket, or after a refresh rebuilt the buckets,
+  // belongs to a list that is gone, so it is dropped rather than appended.
+  const shown = useRef(bucket);
+
+  useEffect(() => {
+    shown.current = bucket;
+  }, [bucket]);
+
   const loadMore = async () => {
     if (!nextCursor) {
       return;
     }
 
-    const page = await api.tasks(taskListQuery(bucket, nextCursor));
-    setTasks((current) => [...current, ...page.tasks]);
-    setNextCursor(page.nextCursor);
+    const requested = bucket;
+
+    try {
+      const page = await api.tasks(taskListQuery(requested, nextCursor));
+
+      if (shown.current === requested) {
+        setTasks((current) => [...current, ...page.tasks]);
+        setNextCursor(page.nextCursor);
+      }
+    } catch (e) {
+      if (shown.current === requested) {
+        setError((e as Error).message);
+      }
+    }
   };
 
   // A task opens where its work is done: the type's hmntsk.route, which is the

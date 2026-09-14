@@ -21,8 +21,8 @@ event stays in the engine's outbox until each broker has taken it.
   - each message carries the event ID as its `Nats-Msg-Id`, so a second copy
     inside the stream's duplicate window is discarded.
 - **Overrides, all in one relay:**
-  - `WithStream` and `WithMaxLen` bound a Redis stream; approximate trimming
-    keeps at least the bound;
+  - `WithStream` and `WithMaxLen` bound a Redis stream, and `WithExactTrim`
+    trims to the bound itself instead of approximately;
   - `WithTrimMode(TrimAcked)` keeps whatever a consumer group has not
     acknowledged;
   - `WithSubjectPrefix` sets the NATS prefix, and a subscriber filters on the
@@ -66,13 +66,13 @@ owns:
   `acme.audited-events`;
 - it deletes the JetStream streams `HMNTSK_EVENTS` and `ACME_INVOICES`.
 
-**Trimming is approximate.** Redis removes only whole stream nodes, which hold
-`stream-node-max-entries` entries each (100 by default). Against a Redis with
-the default setting, the bounded streams keep all the handful of events this
-scenario publishes, so the program prints more entries than the bound. The test
-starts its Redis with `stream-node-max-entries` set to 1, which is what makes
-the trimming in its expected output exact. The scenario never changes that
-setting on your server.
+**Trimming is exact here, approximate by default.** Redis removes only whole
+stream nodes, which hold `stream-node-max-entries` entries each (100 by
+default), so a bound alone would not visibly trim the handful of events this
+scenario publishes. Both bounded sinks add `WithExactTrim()`, which trims to the
+bound itself on any server, so `go run` prints the same lengths as the test.
+Exact trimming costs the broker more work on every publish; see
+[Delivering events](../../docs/delivery.md) before choosing it.
 
 ## Run it
 

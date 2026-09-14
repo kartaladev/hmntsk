@@ -140,6 +140,14 @@ describe("outputFromValues", () => {
         expect(Object.keys(result.errors).sort()).toEqual(["amount", "count", "extra"]),
     },
     {
+      name: "a number holding only spaces is left out like an empty one, not sent as zero",
+      values: { approved: true, reason: "duplicate", amount: "  ", count: " " },
+      assert: (result) => {
+        expect(result.errors).toEqual({});
+        expect(result.output).toEqual({ approved: true, reason: "duplicate" });
+      },
+    },
+    {
       name: "leaves a missing required value to the server's validation",
       values: { approved: true },
       assert: (result) => {

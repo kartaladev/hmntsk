@@ -167,6 +167,23 @@ The user reviewed the browser demo and asked for tasks to live inside an applica
 - **App bar:** Inbox and Orders navigation, the notification bell, the colour mode toggle, and an `Avatar` with the user's initials at the far right whose menu shows name, role and groups and "Sign out".
 - **Tests:** Go table tests cover session sign-in, sign-out and 401, orders (201, 400, 401, 403), and invoice records (200, 401, 404). A sequence test places an order, runs a relay pass, completes the review and checks the approval and the order status, with a table for disputed, approved and rejected. Vitest covers `matchPage`, the workflow steps derived from an invoice's tasks, and initials.
 
+### 12. After the library fixes: workarounds removed
+
+The first round reported four library findings in PR #14. They were fixed in PR #15, merged before this one, and this branch was rebased onto it. Each example's workaround gave way to the library's own mechanism; transcripts are unchanged.
+
+- **`realtime-scaling`, `notifications`, `contextual-ui`:** a hub used to be started with `demo.Background` and polled with `demo.WaitUntil(hub.Running)`, and `realtime-scaling` also sent probe signals between instances until one arrived, because a hub reported running before its broadcaster had subscribed.
+  - They now call `demo.RunHub`, a shared helper written test-first. It runs the hub and returns once `hub.Ready()` closes, or with `Run`'s error when the broadcaster cannot subscribe (for NATS, within `WithSubscribeTimeout`), or on timeout. Either failure stops the hub.
+  - The probes and `demo.WaitUntil` are deleted.
+  - Default: five seconds, ten for broker-backed instances. Override: the caller passes its own timeout.
+- **`http-frameworks`:** Fiber builds its app with `fibertransport.App()` and adds the notification routes afterwards. It no longer builds the app by hand with a catch-all not-found handler added last.
+- **`schema-form`:** `hmntsk.WithEventHandlerFactory` defines the typed kind and returns its `OnCompleted` handler while `New` runs, instead of a handler variable assigned after `Define`.
+- **`event-bus`:** both bounded Redis sinks use `WithExactTrim()`, so the lengths printed are exact on any Redis. The test no longer starts its container with `stream-node-max-entries 1`.
+- **Not fixed in the library, recorded there as follow-ups:**
+  - authorization of cancel, suspend and resume;
+  - per-sink failures persisted on the outbox row.
+
+  No example depends on either.
+
 ## Risks / Trade-offs
 
 - **[Transcripts are brittle]** → Print stable fields only, no IDs or wall-clock times; keep transcripts short; the diff on an intended change is the documentation update.

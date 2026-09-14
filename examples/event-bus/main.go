@@ -355,12 +355,14 @@ func overrides(ctx context.Context, w io.Writer, b brokers, js jetstream.JetStre
 		return fmt.Errorf("create stream: %w", err)
 	}
 
-	// Trimming is approximate: Redis removes only whole stream nodes, so how
-	// close a stream stays to its bound depends on the server's
-	// stream-node-max-entries. The test runs Redis with nodes of one entry.
+	// Trimming is approximate by default: Redis removes only whole stream nodes,
+	// so a bound would not visibly trim a handful of events. WithExactTrim trims
+	// to the bound itself, on any server, which is what makes the printed
+	// lengths exact; it costs the broker more work on every publish.
 	bounded, err := hmntskredis.New(b.redis,
 		hmntskredis.WithStream(boundedStream),
 		hmntskredis.WithMaxLen(2),
+		hmntskredis.WithExactTrim(),
 	)
 	if err != nil {
 		return fmt.Errorf("new redis sink: %w", err)
@@ -371,6 +373,7 @@ func overrides(ctx context.Context, w io.Writer, b brokers, js jetstream.JetStre
 		hmntskredis.WithStream(auditedStream),
 		hmntskredis.WithMaxLen(2),
 		hmntskredis.WithTrimMode(hmntskredis.TrimAcked),
+		hmntskredis.WithExactTrim(),
 	)
 	if err != nil {
 		return fmt.Errorf("new redis sink: %w", err)

@@ -177,11 +177,13 @@ func (s *server) startHub(ctx context.Context) error {
 	}
 
 	s.hub = hub
-	s.closers = append(s.closers, demo.Background(ctx, hub.Run))
 
-	if err := demo.WaitUntil(hub.Running, 5*time.Second); err != nil {
-		return fmt.Errorf("hub did not start: %w", err)
+	stop, err := demo.RunHub(ctx, hub, 5*time.Second)
+	if err != nil {
+		return fmt.Errorf("start hub: %w", err)
 	}
+
+	s.closers = append(s.closers, stop)
 
 	return nil
 }

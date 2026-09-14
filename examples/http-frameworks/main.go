@@ -181,23 +181,22 @@ func serveGin(api *transportcore.API, notifications http.Handler) (base string, 
 	return demo.Serve(engine)
 }
 
-// serveFiber mounts the contract with fiber's binding, which translates
-// fasthttp requests directly, and the notification handler through Fiber's
-// adaptor. The not-found handler goes last: Fiber runs handlers in the order
-// they were added, so added earlier it would answer the notification routes.
+// serveFiber serves the contract with fiber's binding, which translates
+// fasthttp requests directly, and adds the notification handler through Fiber's
+// adaptor. The application App returns answers unmatched requests from its
+// error handler, not from a catch-all route, so routes added afterwards are
+// served.
 func serveFiber(api *transportcore.API, notifications http.Handler) (base string, stop func(), err error) {
-	app := fiber.New()
-
-	if err := fibertransport.Mount(app, api, fibertransport.WithActorFunc(func(c fiber.Ctx) string {
+	app, err := fibertransport.App(api, fibertransport.WithActorFunc(func(c fiber.Ctx) string {
 		return c.Get(demo.ActorHeader)
-	})); err != nil {
-		return "", nil, fmt.Errorf("fiber mount: %w", err)
+	}))
+	if err != nil {
+		return "", nil, fmt.Errorf("fiber app: %w", err)
 	}
 
 	handler := adaptor.HTTPHandler(notifications)
 	app.All("/v1/notifications", handler)
 	app.All("/v1/notifications/*", handler)
-	app.Use(fibertransport.NotFoundHandler())
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

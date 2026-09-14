@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"time"
 )
 
 // ActorHeader is the request header the scenarios name their actor with.
@@ -46,21 +45,6 @@ func Background(ctx context.Context, run func(context.Context) error) (stop func
 	}
 }
 
-// errTimeout reports a condition that did not hold in time.
-var errTimeout = errors.New("demo: condition did not hold in time")
-
-// WaitUntil polls condition until it holds or timeout passes. The scenarios use
-// it to wait for notify.Hub.Running, which offers no channel to wait on.
-func WaitUntil(condition func() bool, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-
-	for !condition() {
-		if time.Now().After(deadline) {
-			return errTimeout
-		}
-
-		time.Sleep(time.Millisecond)
-	}
-
-	return nil
-}
+// errTimeout reports something the scenarios wait for that did not happen in
+// time, such as a hub becoming ready.
+var errTimeout = errors.New("demo: did not happen in time")

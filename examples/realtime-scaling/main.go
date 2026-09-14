@@ -401,12 +401,15 @@ func startInstance(
 		}
 	}()
 
-	in.stops = append(in.stops, demo.Background(ctx, hub.Run))
-
-	err = demo.WaitUntil(hub.Running, 5*time.Second)
+	// The hub is ready once its broadcaster has confirmed its subscription to
+	// the broker. A NATS broadcaster that gets no confirmation within its
+	// subscribe timeout ends the run with an error, which RunHub returns.
+	stopHub, err := demo.RunHub(ctx, hub, 10*time.Second)
 	if err != nil {
-		return nil, fmt.Errorf("hub did not start: %w", err)
+		return nil, fmt.Errorf("start hub: %w", err)
 	}
+
+	in.stops = append(in.stops, stopHub)
 
 	handler, err := notify.NewHandler(svc, hub, notify.WithActor(demo.NotifyActor))
 	if err != nil {
@@ -479,46 +482,10 @@ func startPair(
 		return nil, err
 	}
 
-	p := &pair{a: a, b: b}
-
-	if err := connected(ctx, a, b); err != nil {
-		p.stop()
-
-		return nil, err
-	}
-
-	return p, nil
-}
-
-// probeRecipient receives only the scenario's own readiness probes.
-const probeRecipient = "readiness-probe"
-
-// connected waits until a signal broadcast on one instance reaches the other.
-// A hub reports running as soon as it starts, before its broadcaster has
-// subscribed to the broker, so a signal sent in that moment would be lost;
-// probing first keeps the scenario's output the same on every run.
-func connected(ctx context.Context, from, to *instance) error {
-	subscription, err := to.hub.Subscribe(probeRecipient)
-	if err != nil {
-		return fmt.Errorf("subscribe probe: %w", err)
-	}
-	defer subscription.Close()
-
-	return demo.WaitUntil(func() bool {
-		probe := []notify.Signal{{Recipient: probeRecipient, Change: notify.ChangeCreated, At: time.Now()}}
-		if err := from.svc.Broadcaster().Broadcast(ctx, probe); err != nil {
-			return false
-		}
-
-		select {
-		case <-subscription.Ready():
-			_, ok := subscription.Take()
-
-			return ok
-		case <-time.After(50 * time.Millisecond):
-			return false
-		}
-	}, signalWait)
+	// Each hub returned from startInstance only once its broadcaster had
+	// confirmed its subscription to the broker, so a signal broadcast on A from
+	// here reaches B.
+	return &pair{a: a, b: b}, nil
 }
 
 func (in *instance) stop() {

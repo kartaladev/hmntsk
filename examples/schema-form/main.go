@@ -274,41 +274,41 @@ const typedApproveType = "invoice.approve.typed"
 // HTTP clients and the generic form above still work on it, while Go code gets
 // compile-time checked payloads.
 func typedFacade(ctx context.Context, w io.Writer) error {
-	// A typed completion handler is an ordinary event handler, registered with
-	// WithEventHandlers like any other; the facade adds no second delivery path.
-	// It is made from the typed handle, and the handle from the service, so the
-	// handler registered with the service reaches the typed one through a
-	// variable assigned just after Define, before any task exists.
-	var typed hmntsk.EventHandler
-
-	onCompleted := hmntsk.EventHandlerFunc(func(ctx context.Context, event hmntsk.Event) error {
-		return typed.HandleEvent(ctx, event)
-	})
+	// A typed completion handler is an ordinary event handler; the facade adds no
+	// second delivery path. It is made from the typed handle, and the handle from
+	// the service, so it is registered through WithEventHandlerFactory, which
+	// hands the service to the factory before New returns: Define and
+	// OnCompleted both happen inside it.
+	var approvals hmntsk.Kind[InvoiceApproval, ApprovalDecision]
 
 	svc, err := hmntsk.New(memstore.New(),
 		hmntsk.WithGroupResolver(invoicing.Directory()),
 		hmntsk.WithClock(demo.NewClock(start)),
-		hmntsk.WithEventHandlers(onCompleted),
+		hmntsk.WithEventHandlerFactory(func(svc *hmntsk.Service) ([]hmntsk.EventHandler, error) {
+			var err error
+
+			approvals, err = hmntsk.Define[InvoiceApproval, ApprovalDecision](svc, hmntsk.TypeSpec{
+				Name:              typedApproveType,
+				Title:             "Approve invoice (typed)",
+				DefaultAssignment: hmntsk.CandidatePool{Groups: []string{invoicing.GroupApprovers}},
+			})
+			if err != nil {
+				return nil, fmt.Errorf("define: %w", err)
+			}
+
+			return []hmntsk.EventHandler{
+				approvals.OnCompleted(func(_ context.Context, event hmntsk.Event, decision ApprovalDecision) error {
+					fmt.Fprintf(w, "typed handler: %s completed, approved=%t reason=%s\n",
+						event.Correlation.OwnerRef, decision.Approved, decision.Reason)
+
+					return nil
+				}),
+			}, nil
+		}),
 	)
 	if err != nil {
 		return fmt.Errorf("new service: %w", err)
 	}
-
-	approvals, err := hmntsk.Define[InvoiceApproval, ApprovalDecision](svc, hmntsk.TypeSpec{
-		Name:              typedApproveType,
-		Title:             "Approve invoice (typed)",
-		DefaultAssignment: hmntsk.CandidatePool{Groups: []string{invoicing.GroupApprovers}},
-	})
-	if err != nil {
-		return fmt.Errorf("define: %w", err)
-	}
-
-	typed = approvals.OnCompleted(func(_ context.Context, event hmntsk.Event, decision ApprovalDecision) error {
-		fmt.Fprintf(w, "typed handler: %s completed, approved=%t reason=%s\n",
-			event.Correlation.OwnerRef, decision.Approved, decision.Reason)
-
-		return nil
-	})
 
 	fmt.Fprintf(w, "registered %s with schemas derived from Go types\n", approvals.Name())
 

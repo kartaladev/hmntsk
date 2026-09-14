@@ -666,11 +666,12 @@ func newApp(ctx context.Context, store notify.Store, projectorOpts []tasknotify.
 
 // runHub starts the hub and waits until streams can subscribe.
 func (a *app) runHub(ctx context.Context) error {
-	a.closers = append(a.closers, demo.Background(ctx, a.hub.Run))
-
-	if err := demo.WaitUntil(a.hub.Running, 5*time.Second); err != nil {
-		return fmt.Errorf("hub did not start: %w", err)
+	stop, err := demo.RunHub(ctx, a.hub, 5*time.Second)
+	if err != nil {
+		return fmt.Errorf("start hub: %w", err)
 	}
+
+	a.closers = append(a.closers, stop)
 
 	return nil
 }

@@ -17,11 +17,9 @@ func TestRun(t *testing.T) {
 	t.Parallel()
 
 	b := brokers{
-		// Approximate trimming removes whole stream nodes, 100 entries each by
-		// default, so a bound would not visibly trim a handful of events. Small
-		// nodes, on this container only, make the trimming the scenario prints
-		// exact.
-		redis: hmntskredis.RunTestRedis(t, hmntskredis.WithTestServerConfig("stream-node-max-entries", "1")),
+		// The scenario trims exactly, so a default Redis prints the same lengths
+		// as any other.
+		redis: hmntskredis.RunTestRedis(t),
 		nats:  hmntsknats.RunTestNATS(t),
 	}
 
