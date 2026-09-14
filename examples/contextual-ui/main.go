@@ -1,16 +1,18 @@
-// Command inbox-ui serves a browser demo of a contextual inbox over hmntsk:
-// buckets with counts, tasks in urgency order linked to their invoice, a form
-// rendered from the task type's schemas, and a notification badge that updates
-// as tasks arrive.
+// Command contextual-ui serves a browser demo of contextual tasks: hmntsk's
+// tasks inside the pages of a small purchasing application. An order placed on
+// its orders page starts an invoice review; the invoice page, which every task
+// links to through its type's route, is where the review and then the approval
+// are done through a form rendered from the type's schemas. An inbox with
+// bucket counts and a live notification badge sit alongside.
 //
 // It is an illustration, not a UI library. The page is a small React app in
 // web/, built into dist/ and embedded here, so this runs with Go alone:
 //
-//	go run ./inbox-ui
+//	go run ./contextual-ui
 //
 // then open http://127.0.0.1:8080. Set HMNTSK_DEMO_ADDR to listen elsewhere.
 //
-// The user switcher at the top of the page sets a cookie that the server
+// The sign-in page asks for no password and sets a cookie that the server
 // trusts. That is for demonstration only and is not authentication.
 package main
 
@@ -28,7 +30,7 @@ import (
 
 func main() {
 	if err := serveUntilInterrupted(); err != nil {
-		fmt.Fprintln(os.Stderr, "inbox-ui:", err)
+		fmt.Fprintln(os.Stderr, "contextual-ui:", err)
 		os.Exit(1)
 	}
 }
@@ -42,7 +44,7 @@ func serveUntilInterrupted() error {
 }
 
 func run(ctx context.Context, w io.Writer) error {
-	dir, err := os.MkdirTemp("", "hmntsk-inbox-ui-")
+	dir, err := os.MkdirTemp("", "hmntsk-contextual-ui-")
 	if err != nil {
 		return fmt.Errorf("temp dir: %w", err)
 	}
@@ -76,7 +78,7 @@ func run(ctx context.Context, w io.Writer) error {
 
 	go func() { served <- httpServer.ListenAndServe() }()
 
-	fmt.Fprintf(w, "inbox demo on http://%s (SQLite database in %s); Ctrl+C to stop\n", addr, dir)
+	fmt.Fprintf(w, "contextual tasks demo on http://%s (SQLite database in %s); Ctrl+C to stop\n", addr, dir)
 
 	select {
 	case err := <-served:

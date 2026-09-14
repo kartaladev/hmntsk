@@ -31,12 +31,12 @@ Every scenario is built test-first: write `main_test.go` with the expected trans
 - [x] 5.2 `notifications` default: memory store, `tasknotify` projector on a relay pass, offers to alice and bob, bob's claim closes alice's offer, HTTP list/count/mark-read, and one SSE `unread-changed` signal read by the test client; verify the scenario test passes with `goleak`-clean shutdown of hub and stream
 - [x] 5.3 `notifications` override: `WithTaskLinkTemplate` + `WithTitles`, a subscription authorizer for carol, `NewPruner` with `RetainActive`, `NewEmailDispatcher` with a printing `MailerFunc`, and `notify/sqlstore` over `stdsqlexec` on SQLite; verify the scenario test passes
 
-## 6. Browser demo `inbox-ui`
+## 6. Browser demo `contextual-ui`
 
-- [x] 6.1 Test-first Go server: SPA index served at `/` and for unknown client routes, `demo_user` cookie reaching the task and notification actor functions, task API mounted with default policies, notify handler mounted, seeding producing the expected buckets; verify `go test ./inbox-ui` passes using a placeholder `dist/index.html`
-- [x] 6.2 Scaffold `inbox-ui/web` (Vite, React, TypeScript, Vitest; pinned versions; committed `package-lock.json`) and add `make ui-build` / `make ui-test`; verify `npm ci && npm run build` writes `inbox-ui/dist` and `make ui-test` runs an empty suite green
+- [x] 6.1 Test-first Go server: SPA index served at `/` and for unknown client routes, `demo_user` cookie reaching the task and notification actor functions, task API mounted with default policies, notify handler mounted, seeding producing the expected buckets; verify `go test ./contextual-ui` passes using a placeholder `dist/index.html`
+- [x] 6.2 Scaffold `contextual-ui/web` (Vite, React, TypeScript, Vitest; pinned versions; committed `package-lock.json`) and add `make ui-build` / `make ui-test`; verify `npm ci && npm run build` writes `contextual-ui/dist` and `make ui-test` runs an empty suite green
 - [x] 6.3 Test-first frontend logic with Vitest: route expansion matching the cases in root `route_test.go`, the schema-form walker (string, number, integer, boolean, enum, JSON fallback), bucket query building; verify `make ui-test` passes
-- [x] 6.4 Build the page with Material UI v9, following MUI's official theming and styling skills (one theme with light and dark color schemes and CSS variables, `ThemeProvider` + `CssBaseline`, `sx` before theme overrides, one-level imports): user switcher with a "demo only, not authentication" banner, buckets with counts, urgency-ordered list with route links, claim/start/progress/complete through the rendered form, notification badge refreshed on SSE signals; commit `dist/`; verify manually with `go run ./inbox-ui` against every spec scenario (switching users, completing from the form, live notification) and record the result in the PR description
+- [x] 6.4 Build the page with Material UI v9, following MUI's official theming and styling skills (one theme with light and dark color schemes and CSS variables, `ThemeProvider` + `CssBaseline`, `sx` before theme overrides, one-level imports): user switcher with a "demo only, not authentication" banner, buckets with counts, urgency-ordered list with route links, claim/start/progress/complete through the rendered form, notification badge refreshed on SSE signals; commit `dist/`; verify manually with `go run ./contextual-ui` against every spec scenario (switching users, completing from the form, live notification) and record the result in the PR description
 - [x] 6.5 Wire freshness and UI checks into CI: Node setup plus `npm ci` and build before `git diff --exit-code` in `generated`, and a new `examples ui` job running Vitest and `npm audit --omit=dev --audit-level=high`; verify by changing a source file without rebuilding and confirming the diff check fails locally
 
 ## 7. Documentation
@@ -76,4 +76,15 @@ Every scenario is built test-first: write `main_test.go` with the expected trans
 ## 13. Second round: verification
 
 - [x] 13.1 Run `/simplify` over the second-round changes and re-run the examples tests
-- [x] 13.2 Run the full check `GOTOOLCHAIN=go1.26.8 make lint test test-race test-integration vuln`, `make ui-test`, and `openspec validate usage-examples --strict`; all pass `GOTOOLCHAIN=go1.26.8 make lint test test-race test-integration vuln` plus `make ui-test`, and `openspec validate usage-examples --strict`; all pass
+- [x] 13.2 Run the full check `GOTOOLCHAIN=go1.26.8 make lint test test-race test-integration vuln`, `make ui-test`, and `openspec validate usage-examples --strict`; all pass
+
+## 14. Third round: `contextual-ui`
+
+- [x] 14.1 Rename `examples/inbox-ui` to `examples/contextual-ui` with `git mv`, and update the Makefile, CI, npm package name, READMEs, docs and this change; verify no `inbox-ui` reference remains outside built assets
+- [x] 14.2 Test-first demo session: `GET`/`POST`/`DELETE /demo/session` with an `HttpOnly` cookie, erin added as purchasing, 400 for an unknown user and 401 with no session; verify the server table test fails first, then passes
+- [x] 14.3 Test-first orders: `POST /demo/orders` saves order, invoice and review task in one transaction (201, 400, 401, 403), `GET /demo/orders` lists newest first, seeded orders for the seeded invoices, and `POST /demo/invoices` removed; verify red then green
+- [x] 14.4 Test-first `invoice-workflow` relay sink: a matching review creates the approval once even when delivered twice, a mismatch marks the order disputed, an approval marks it approved or rejected; verify red then green (the repeat-delivery cases were also confirmed to fail with the duplicate guard and the status guard removed)
+- [x] 14.5 Test-first `GET /demo/invoices/{id}`: invoice, order and every task on it (200, 401, 404); verify red then green
+- [x] 14.6 Test-first page logic with Vitest: `matchPage`, workflow steps from an invoice's tasks, initials; verify red then green with `make ui-test`
+- [x] 14.7 Build the pages with Material UI: sign-in page with the "not authentication" notice, app bar with navigation and avatar menu with sign-out, inbox without a switcher, orders page with the order form and list, invoice page with details, steps and the task card; `make ui-build` and commit `dist/`
+- [x] 14.8 Update `contextual-ui/README.md`, `examples/README.md` and doc links; run `/simplify` over the change; run the full check and verify every spec scenario manually in a browser with `go run ./contextual-ui`

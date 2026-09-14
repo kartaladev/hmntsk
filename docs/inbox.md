@@ -13,7 +13,8 @@ To see it running: [`examples/inbox-buckets`](../examples/inbox-buckets) covers
 buckets, orderings, counts and query authorization,
 [`examples/record-page`](../examples/record-page) covers reading a task, and
 [`examples/context-links`](../examples/context-links) covers metadata and links.
-[`examples/inbox-ui`](../examples/inbox-ui) puts them all behind a page.
+[`examples/contextual-ui`](../examples/contextual-ui) puts them inside an
+application's own pages.
 
 ## Buckets are queries
 

@@ -1,11 +1,11 @@
-import type { Task, TaskType } from "./api";
-import { expandRoute } from "./route";
+import type { TaskType } from "./api";
+import { expandRoute, type RouteTask } from "./route";
 
 // contextLink is where a task's work is done: the type's hmntsk.route, filled in
 // for this task. This template puts correlation values in path segments and the
 // task ID in the query, so each is escaped for that position first, because
 // expandRoute, like hmntsk.ExpandRoute, inserts values raw.
-export function contextLink(task: Task, type: TaskType | undefined): string | undefined {
+export function contextLink(task: RouteTask, type: TaskType | undefined): string | undefined {
   const template = type?.metadata?.["hmntsk.route"];
   if (!template) {
     return undefined;
@@ -25,9 +25,4 @@ export function contextLink(task: Task, type: TaskType | undefined): string | un
       ),
     },
   });
-}
-
-// taskFromLocation reads the task a context link points at.
-export function taskFromLocation(location: { search: string }): string | undefined {
-  return new URLSearchParams(location.search).get("task") ?? undefined;
 }

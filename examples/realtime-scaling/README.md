@@ -50,7 +50,7 @@ signal between them.
   policies, retention and email are in `notifications`.
 - **Notifications without tasks:** idempotency, coalescing and closing are in
   `notify-standalone`.
-- **A browser page:** that is `inbox-ui`.
+- **A browser page:** that is `contextual-ui`.
 - **Gin and Fiber:** they are in `http-frameworks`. WebSocket is not available
   on Fiber.
 

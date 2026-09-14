@@ -37,7 +37,7 @@ From this directory:
 ```sh
 go run ./quickstart      # any scenario
 go test ./...            # every scenario (service-backed ones need Docker)
-go run ./inbox-ui        # the browser demo, then open http://127.0.0.1:8080
+go run ./contextual-ui   # the browser demo, then open http://127.0.0.1:8080
 ```
 
 Most scenarios need nothing but Go. Three demonstrate a real server; see
@@ -72,7 +72,7 @@ Most scenarios need nothing but Go. Three demonstrate a real server; see
 | Self-only inbox queries over HTTP, and a policy letting a supervisor read a team queue | [`inbox-buckets`](inbox-buckets) |
 | Every task for one record, participants-only single-task reads, an auditor read policy | [`record-page`](record-page) |
 | The same task contract and notification handlers served by Gin and by Fiber | [`http-frameworks`](http-frameworks) |
-| All of it behind a page: buckets with counts, route links, a schema form, a live notification badge | [`inbox-ui`](inbox-ui) |
+| Tasks inside an application's own pages: sign-in, an order that starts an invoice review, an invoice page reached through `hmntsk.route` where review and approval are done through a schema form, a workflow step run by a relay sink after commit, inbox buckets with counts, a live notification badge | [`contextual-ui`](contextual-ui) |
 
 ### Events and delivery
 
@@ -121,9 +121,10 @@ Each scenario's README has the `docker run` commands that start them.
 
 ## Shortcuts the scenarios take on purpose
 
-- **Identity:** a request header (or, in `inbox-ui`, a cookie) says who is
-  asking. That stands for your authentication middleware. It is not
-  authentication, and hmntsk trusts whatever actor you establish.
+- **Identity:** a request header (or, in `contextual-ui`, a cookie set by a
+  password-less sign-in) says who is asking. That stands for your
+  authentication middleware. It is not authentication, and hmntsk trusts
+  whatever actor you establish.
 - **One pass instead of a loop:** scenarios call `Relay.Relay`, `Sweeper.Sweep`,
   `Pruner.Prune` and `EmailDispatcher.Dispatch` once, so the output is the same
   on every run. A host runs the `Run` form of each on an interval.
@@ -133,18 +134,19 @@ Each scenario's README has the `docker run` commands that start them.
 - **Fixed clock and masked identifiers:** these keep the printed output stable.
   Don't copy them into a host.
 
-## `inbox-ui`'s page
+## `contextual-ui`'s page
 
-The page is a React and Material UI app in [`inbox-ui/web`](inbox-ui/web). Its
-build is committed in `inbox-ui/dist` and embedded in the Go program, which is
-why `go run` needs no Node. It illustrates the HTTP contracts; it is not a
-component library, and its schema form handles only flat forms.
+The page is a React and Material UI app in
+[`contextual-ui/web`](contextual-ui/web). Its build is committed in
+`contextual-ui/dist` and embedded in the Go program, which is why `go run`
+needs no Node. It illustrates the HTTP contracts; it is not a component
+library, and its schema form handles only flat forms.
 
 Changing the page needs Node 22.12 or newer. From the repository root:
 
 ```sh
-make ui-test     # route expansion, the form walker, bucket queries (Vitest)
-make ui-build    # typecheck and rebuild inbox-ui/dist; commit the result
+make ui-test     # page matching, workflow steps, route expansion, the form walker, bucket queries (Vitest)
+make ui-build    # typecheck and rebuild contextual-ui/dist; commit the result
 ```
 
 CI rebuilds the page and fails if the committed build does not match its source.

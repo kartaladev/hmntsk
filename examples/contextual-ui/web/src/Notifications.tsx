@@ -9,9 +9,10 @@ import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
-import { useCallback, useEffect, useState } from "react";
+import { type MouseEvent, useCallback, useEffect, useState } from "react";
 
 import { api, type Notification } from "./api";
+import { isLocalPath, isPlainClick, navigate } from "./pages";
 
 type Props = {
   user: string;
@@ -93,7 +94,21 @@ export function NotificationBell({ user, onChange }: Props) {
           </MenuItem>
         )}
         {items.map((n) => (
-          <MenuItem key={n.id} component="a" href={n.links?.context ?? n.links?.task} sx={{ gap: 1, whiteSpace: "normal" }}>
+          <MenuItem
+            key={n.id}
+            component="a"
+            href={n.links?.context ?? n.links?.task}
+            // A context link is a page of this application, so it opens without a reload.
+            onClick={(e: MouseEvent<HTMLAnchorElement>) => {
+              const href = n.links?.context;
+              if (href && isLocalPath(href) && isPlainClick(e)) {
+                e.preventDefault();
+                setAnchor(null);
+                navigate(href);
+              }
+            }}
+            sx={{ gap: 1, whiteSpace: "normal" }}
+          >
             <ListItemText primary={n.title ?? n.kind} secondary={new Date(n.createdAt).toLocaleString()} />
             <Tooltip title="Mark read">
               <IconButton

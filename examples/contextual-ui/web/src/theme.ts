@@ -33,6 +33,9 @@ export const theme = createTheme({
       defaultProps: { disableElevation: true },
       styleOverrides: { root: { textTransform: "none" } },
     },
+    MuiTab: {
+      styleOverrides: { root: { textTransform: "none", fontWeight: 600 } },
+    },
     MuiPaper: {
       defaultProps: { variant: "outlined" },
     },

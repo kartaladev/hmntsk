@@ -1,11 +1,9 @@
-import CloseIcon from "@mui/icons-material/Close";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
 import Divider from "@mui/material/Divider";
 import FormControlLabel from "@mui/material/FormControlLabel";
-import IconButton from "@mui/material/IconButton";
 import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
 import Switch from "@mui/material/Switch";
@@ -14,6 +12,7 @@ import Typography from "@mui/material/Typography";
 import { useEffect, useMemo, useState } from "react";
 
 import { ApiError, api, type Issue, type Task, type TaskType } from "./api";
+import { Due } from "./format";
 import { fieldsFromSchema, outputFromValues, withBooleanDefaults, type Field } from "./schemaForm";
 import { StatusChip } from "./StatusChip";
 
@@ -22,13 +21,12 @@ type Props = {
   user: string;
   types: Record<string, TaskType>;
   onChange: () => void;
-  onClose: () => void;
 };
 
-// TaskPanel is where the work is done: the invoice the task is about, the
-// lifecycle actions the current user may take, and a form rendered from the
-// task type's output schema.
-export function TaskPanel({ id, user, types, onChange, onClose }: Props) {
+// TaskPanel is where the work is done, inside the invoice page: the lifecycle
+// actions the current user may take, and a form rendered from the task type's
+// output schema.
+export function TaskPanel({ id, user, types, onChange }: Props) {
   const [task, setTask] = useState<Task>();
   const [problem, setProblem] = useState<string>();
   const [issues, setIssues] = useState<Issue[]>([]);
@@ -44,7 +42,12 @@ export function TaskPanel({ id, user, types, onChange, onClose }: Props) {
       },
       // Reading one task is participants-only by default: a 403 here is the
       // server's policy, not a broken page.
-      (e: ApiError) => setProblem(e.status === 403 ? "You take no part in this task, so you may not read it." : e.message),
+      (e: ApiError) =>
+        setProblem(
+          e.status === 403
+            ? "You take no part in this task, so you may not open it. The invoice's workflow is still shown."
+            : e.message,
+        ),
     );
   }, [id]);
 
@@ -52,21 +55,21 @@ export function TaskPanel({ id, user, types, onChange, onClose }: Props) {
   const fields = useMemo(() => fieldsFromSchema(type?.outputSchema), [type]);
 
   const header = (
-    <Stack direction="row" sx={{ alignItems: "center", px: 3, py: 2 }}>
-      <Typography variant="h6" component="h2" sx={{ flexGrow: 1 }}>
+    <Box sx={{ px: 3, py: 2 }}>
+      <Typography variant="overline" color="text.secondary">
+        Your task
+      </Typography>
+      <Typography variant="h6" component="h2">
         {type?.title ?? task?.type ?? "Task"}
       </Typography>
-      <IconButton onClick={onClose} aria-label="Close">
-        <CloseIcon />
-      </IconButton>
-    </Stack>
+    </Box>
   );
 
   if (problem && !task) {
     return (
       <Box>
         {header}
-        <Alert severity="error" sx={{ mx: 3 }}>
+        <Alert severity="info" sx={{ mx: 3, mb: 3 }}>
           {problem}
         </Alert>
       </Box>
@@ -138,44 +141,48 @@ export function TaskPanel({ id, user, types, onChange, onClose }: Props) {
       <Stack spacing={3} sx={{ p: 3 }}>
         {type?.description && <Typography color="text.secondary">{type.description}</Typography>}
 
-        <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+        <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap" }}>
           <StatusChip status={task.status} />
-          {task.assignee && (
-            <Typography variant="body2" color="text.secondary">
-              held by {task.assignee}
-            </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {task.assignee ? `held by ${task.assignee}` : "in the pool"}
+          </Typography>
+          {task.dueAt && (
+            <Stack direction="row" spacing={0.5} sx={{ alignItems: "center" }}>
+              <Typography variant="body2" color="text.secondary">
+                · due
+              </Typography>
+              <Due at={task.dueAt} />
+            </Stack>
           )}
         </Stack>
-
-        <Box
-          component="dl"
-          sx={{ display: "grid", gridTemplateColumns: "max-content 1fr", columnGap: 2, rowGap: 1, m: 0 }}
-        >
-          <Detail label="Invoice" value={task.correlation?.ownerRef} />
-          {Object.entries(task.input ?? {}).map(([k, v]) => (
-            <Detail key={k} label={k} value={String(v)} />
-          ))}
-        </Box>
 
         {problem && <Alert severity="error">{problem}</Alert>}
 
-        <Stack direction="row" spacing={1}>
-          {task.status === "READY" && (
-            <Button variant="contained" disabled={busy} onClick={() => void act("claim")}>
-              Claim
-            </Button>
-          )}
-          {task.status === "RESERVED" && mine && (
-            <>
-              <Button variant="contained" disabled={busy} onClick={() => void act("start")}>
-                Start
+        {(task.status === "READY" || (task.status === "RESERVED" && mine)) && (
+          <Stack direction="row" spacing={1}>
+            {task.status === "READY" && (
+              <Button variant="contained" disabled={busy} onClick={() => void act("claim")}>
+                Claim
               </Button>
-              <Button variant="outlined" disabled={busy} onClick={() => void act("release")}>
-                Release
-              </Button>
-            </>
-          )}
-        </Stack>
+            )}
+            {task.status === "RESERVED" && mine && (
+              <>
+                <Button variant="contained" disabled={busy} onClick={() => void act("start")}>
+                  Start
+                </Button>
+                <Button variant="outlined" disabled={busy} onClick={() => void act("release")}>
+                  Release
+                </Button>
+              </>
+            )}
+          </Stack>
+        )}
+
+        {task.status === "RESERVED" && !mine && (
+          <Typography variant="body2" color="text.secondary">
+            {task.assignee} has claimed this task.
+          </Typography>
+        )}
 
         {task.status === "IN_PROGRESS" && mine && (
           <Box
@@ -224,7 +231,7 @@ export function TaskPanel({ id, user, types, onChange, onClose }: Props) {
         {task.output && (
           <Box>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
-              Output
+              Decision recorded
             </Typography>
             <Box
               component="pre"
@@ -236,19 +243,6 @@ export function TaskPanel({ id, user, types, onChange, onClose }: Props) {
         )}
       </Stack>
     </Box>
-  );
-}
-
-function Detail({ label, value }: { label: string; value?: string }) {
-  return (
-    <>
-      <Typography component="dt" variant="body2" color="text.secondary">
-        {label}
-      </Typography>
-      <Typography component="dd" variant="body2" sx={{ m: 0 }}>
-        {value}
-      </Typography>
-    </>
   );
 }
 

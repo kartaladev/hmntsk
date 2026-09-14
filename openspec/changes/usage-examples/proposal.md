@@ -26,7 +26,7 @@ The inbox, task-read authorization and notification changes have now landed on m
   - `escalation`, `event-delivery` and `notifications` extended with the behaviours they did not yet show (direct escalation, exemption, caps and supersession; retry with backoff, independent sinks, the audience snapshot; release, delegation and escalation projection, custom rules and closing statuses, email filtering, age retention and the default eviction strategy).
   - **Service-backed scenarios**, which need a real server: `store-drivers` (PostgreSQL and MySQL through `store/sql`, `store/pgx` and `store/gorm`), `event-bus` (Redis streams, NATS subjects and JetStream), `realtime-scaling` (Redis and NATS broadcasters across two instances, and the WebSocket endpoint). Their tests provision servers with the repository's testcontainers helpers; `go run` takes a server address from the environment.
 - **A README in every example directory** saying what the example shows, the context it assumes, and how to run it.
-- **One browser demo, `inbox-ui`:** a React single-page app built with Material UI (MUI), so the demo looks like something an end user would want, served by a Go program, showing buckets with counts, urgency ordering, route links, a schema-driven form and a live notification badge. It is labelled as an illustration, not a UI library, and runs with `go run` without Node installed.
+- **One browser demo, `contextual-ui`:** a React single-page app built with Material UI (MUI), served by a Go program. It looks like a small purchasing application with tasks inside its own pages: sign-in, an inbox with buckets and counts in urgency order, an orders page where placing an order starts an invoice review, an invoice page where the review and then the approval are done through a schema-driven form, a live notification badge, and the signed-in user's avatar with sign-out. (It began as `inbox-ui`, a stand-alone inbox with a user switcher; the user asked for the contextual version after review.) It is labelled as an illustration, not a UI library, and runs with `go run` without Node installed.
 - **Tooling:** a Makefile group for the examples module, kept out of the release order; CI runs the scenarios and checks the committed UI bundle is current.
 - **Docs:** `examples/README.md` maps each feature to the scenario that shows it; the root README and guides link to it.
 
@@ -44,7 +44,7 @@ None.
 
 ## Impact
 
-- **New code:** `examples/` only, including `examples/inbox-ui/web/` (TypeScript, React, Vite) and its committed build output.
+- **New code:** `examples/` only, including `examples/contextual-ui/web/` (TypeScript, React, Vite) and its committed build output.
 - **Repository tooling:** `go.work`, `Makefile` (new module group, excluded from `RELEASE_ORDER`), `.github/workflows/ci.yml` (scenario tests, UI bundle freshness, UI unit tests), `docs/releasing.md` (examples are never tagged).
 - **Docs:** `README.md`, `docs/inbox.md`, `docs/notifications.md`, `docs/delivery.md` gain links to scenarios.
 - **Dependencies:** the examples module requires the repository's own modules through `go.work` and `modernc.org/sqlite`; the UI adds a Node toolchain for contributors who change it, and to CI.

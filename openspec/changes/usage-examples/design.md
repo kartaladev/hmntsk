@@ -48,7 +48,7 @@ examples/                        module github.com/kartaladev/hmntsk/examples
   escalation/
   event-delivery/
   notifications/
-  inbox-ui/
+  contextual-ui/
     main.go, server.go, ...      Go server
     web/                         React + TypeScript source (Vite)
     dist/                        committed build, embedded with go:embed
@@ -96,18 +96,18 @@ Each row is what the scenario's default and override sections demonstrate.
 
 ### 6. Browser demo: React SPA embedded in a Go server
 
-- **Server (`inbox-ui/*.go`):** one `http.ServeMux` mounting `httptransport.Mount` for the task API with `WithActorFunc`, `notify.NewHandler` with `WithActor`, a small demo API (`GET /demo/users`, `POST /demo/seed`), and the embedded SPA with an `index.html` fallback. Store: SQLite file in a temp directory (so a reader can inspect it), seeded with invoices and tasks at startup. A relay, hub and projector run with `Run` loops under the server's context, because the demo is long-lived.
+- **Server (`contextual-ui/*.go`):** one `http.ServeMux` mounting `httptransport.Mount` for the task API with `WithActorFunc`, `notify.NewHandler` with `WithActor`, a small demo API (`GET /demo/users`, `POST /demo/seed`), and the embedded SPA with an `index.html` fallback. Store: SQLite file in a temp directory (so a reader can inspect it), seeded with invoices and tasks at startup. A relay, hub and projector run with `Run` loops under the server's context, because the demo is long-lived.
 - **Identity:** the selected demo user is sent in a `demo_user` cookie that the server reads in both actor functions. A cookie rather than a header because `EventSource` cannot set headers. The page shows a permanent banner that this is not authentication.
-- **Frontend (`inbox-ui/web`):** Vite, React, TypeScript and Material UI v9 (with Emotion), chosen by the user so that the demo is attractive to end users. It follows MUI's official agent skills (`skills/material-ui-theming`, `skills/material-ui-styling` in mui/material-ui):
+- **Frontend (`contextual-ui/web`):** Vite, React, TypeScript and Material UI v9 (with Emotion), chosen by the user so that the demo is attractive to end users. It follows MUI's official agent skills (`skills/material-ui-theming`, `skills/material-ui-styling` in mui/material-ui):
   - one `createTheme` with `colorSchemes` (light and dark) and `cssVariables`, provided by `ThemeProvider` with `CssBaseline` at the root;
   - styling at the narrowest scope: `sx` for one-off layout, `theme.components` for app-wide defaults, no global CSS file;
   - one-level imports (`@mui/material/Button`), and scoped state selectors only.
 
   No router library and no state library. Modules: API client, bucket list with counts (`/tasks/count` per bucket), task list ordered by `orderBy=urgency`, link rendering via the type's `hmntsk.route` expanded client-side the same way as `ExpandRoute`, a minimal JSON-Schema form walker (object of string, number, integer, boolean, enum; anything else falls back to a JSON textarea), and a notification badge that refetches `/notifications/count` on each SSE signal.
-- **Build and embed:** `npm ci && npm run build` writes `inbox-ui/dist/`, which is committed and embedded with `//go:embed all:dist`. `go run ./inbox-ui` needs no Node. The build is driven by `make ui-build`, not by a `//go:generate` directive: `make generate` runs over every module, so a directive would make every Go contributor install Node.
-- **Freshness check:** the CI `generated` job gains `actions/setup-node` and runs `npm ci` + build for `examples/inbox-ui/web` before its existing `git diff --exit-code`. Vite output is deterministic for identical source and lockfile; hashed filenames change only when content changes.
+- **Build and embed:** `npm ci && npm run build` writes `contextual-ui/dist/`, which is committed and embedded with `//go:embed all:dist`. `go run ./contextual-ui` needs no Node. The build is driven by `make ui-build`, not by a `//go:generate` directive: `make generate` runs over every module, so a directive would make every Go contributor install Node.
+- **Freshness check:** the CI `generated` job gains `actions/setup-node` and runs `npm ci` + build for `examples/contextual-ui/web` before its existing `git diff --exit-code`. Vite output is deterministic for identical source and lockfile; hashed filenames change only when content changes.
 - **Tests:**
-  - Go tests (`inbox-ui/server_test.go`): the SPA index is served at `/` and for unknown client routes; the demo cookie reaches both actor functions; the task and notification APIs are mounted with the expected defaults; seeding produces the buckets the page expects.
+  - Go tests (`contextual-ui/server_test.go`): the SPA index is served at `/` and for unknown client routes; the demo cookie reaches both actor functions; the task and notification APIs are mounted with the expected defaults; seeding produces the buckets the page expects.
   - Vitest for the pure frontend logic: route expansion parity with `ExpandRoute` (same table of cases as `route_test.go`), the schema-form walker, and bucket query building. Run in a new CI job `examples ui` and a `make ui-test` target.
   - No browser end-to-end test in CI. Manual verification with `go run` is a task.
 - **Alternatives:**
@@ -117,7 +117,7 @@ Each row is what the scenario's default and override sections demonstrate.
 
 ### 7. Tooling
 
-- **Makefile:** `EXAMPLES_MODULES := examples`, added to `MODULES` when `GROUP=all`, and `GROUP=examples` accepted. Not added to `RELEASE_ORDER`. New targets `ui-build` and `ui-test` (both `npm --prefix examples/inbox-ui/web ...`), kept out of `all` so that Go-only contributors are unaffected.
+- **Makefile:** `EXAMPLES_MODULES := examples`, added to `MODULES` when `GROUP=all`, and `GROUP=examples` accepted. Not added to `RELEASE_ORDER`. New targets `ui-build` and `ui-test` (both `npm --prefix examples/contextual-ui/web ...`), kept out of `all` so that Go-only contributors are unaffected.
 - **`go.work`:** `use ./examples`.
 - **`examples/go.mod`:** `module github.com/kartaladev/hmntsk/examples`, `go 1.26.0`, the same comment block as satellites explaining that sibling modules come from `go.work` and that this module is never tagged. Third-party requirements added with `go get <module>@<version already used by store/sql>`, never tidy.
 - **Tests guarding the release rule:** extend `docs_test.go` with a check that `make release-order` does not contain `examples` and that `docs/releasing.md` says the examples are never tagged.
@@ -148,6 +148,25 @@ A coverage review against all twenty capability specs found about half of the li
 - **READMEs:** every example directory has one, from the same outline: what it shows, the domain it assumes, what it leaves out, run and test commands, and services with their `docker run` lines. `examples/README.md` stays the index.
 - **Delivery:** the second round is written by parallel agents, one per scenario group, each owning its directories. Shared files (`go.mod`, `internal/`, `examples/README.md`, `tasks.md`, CI) are changed by the coordinating session only, so agents never race on them.
 
+### 11. Third round: `inbox-ui` becomes `contextual-ui`
+
+The user reviewed the browser demo and asked for tasks to live inside an application's own pages, the way the library's "contextual tasks" are meant to be used: rename it, replace the user switcher with a sign-in page, add an orders page that starts the work, give each invoice a dedicated page where the review and approval are done, and put the user's avatar and sign-out in the top-right corner.
+
+- **Rename:** `examples/inbox-ui` → `examples/contextual-ui`, including the Makefile's `UI_DIR`, both CI jobs, the npm package name and every doc link. No redirect or alias: the examples are never tagged, so nobody depends on the old path.
+- **Demo users:** alice, bob (approvers), carol (manager), dave (auditor) as before, plus **erin, purchasing**. erin exists only in the demo's user list, not in `invoicing.Directory()`, so she takes part in no invoice task and nobody approves their own purchase. The shared `invoicing` package is unchanged, so no other scenario's transcript moves.
+- **Session (still not authentication):** `GET /demo/session` answers the signed-in demo user or 401; `POST /demo/session` with `{"user": "..."}` signs in, `DELETE /demo/session` signs out. The `demo_user` cookie is now `HttpOnly`, because the page asks the server who is signed in instead of reading `document.cookie`, which is how a real session cookie behaves. The actor functions of the task and notification handlers read it exactly as before. The sign-in page carries the "not authentication" notice.
+- **Orders:** the example owns an `orders` table next to the engine's tables and `invoices` (`id`, `invoice_id`, `description`, `requested_by`, `status`, `created_at`). `POST /demo/orders` (purchasing only: 401 without a session, 403 for anyone else, 400 for an empty supplier or description or a non-positive amount) saves the order, its invoice and the invoice's review task in one host-led SQLite transaction and dispatches after commit, as `correlated-tasks` does. `GET /demo/orders` lists them, newest first. `POST /demo/invoices` ("Simulate a new invoice") is removed: placing an order replaces it.
+- **Workflow after commit:** a relay sink named `invoice-workflow`, run by the same relay as the notification projector, reacts to completed invoice tasks.
+  - A review with `matchesOrder: true` creates the approval task and moves the order to `awaiting-approval`. `false` moves it to `disputed`.
+  - A completed approval moves the order to `approved` or `rejected`.
+  - It is idempotent, because the relay delivers at least once. The approval task is created with a caller-supplied ID derived from the invoice (`CreateRequest.ID`, the engine's idempotent create), so a repeat answers `ErrConflict`, which counts as done, whichever relay asked. An order moves only from the one status each step expects, so a late repeat never moves it back.
+  - A relay sink rather than an in-process `WithEventHandlers` handler, because the handler would need the `*Service` before `New` returns (library finding 3) and because a sink's work happens only after the completion is committed.
+  - Seeded invoices get seeded orders by erin, so every invoice page has an order.
+- **Invoice record:** `GET /demo/invoices/{id}` answers the invoice, its order and every task on it (type, status, assignee, activity, created time), read by the host through `Service.Query` filtered on correlation. That is what `record-page` shows, and it keeps the task API's `SelfOnly` default untouched: the page needs a record's whole history, which is the host's own record page and its own authorization (any signed-in demo user here), not an inbox query.
+- **Pages:** `/login`, `/` (inbox), `/orders`, `/invoices/{id}` and `/invoices/{id}/{activity}?task={id}`, the existing `hmntsk.route`. Still no router library: a small tested `matchPage(pathname)` and `navigate(path)` over `history.pushState`. A task row, a notification and an order row all open the invoice page. The page works on the task named by `?task=`, and otherwise on the viewer's open task on that invoice. The task drawer becomes a card on that page.
+- **App bar:** Inbox and Orders navigation, the notification bell, the colour mode toggle, and an `Avatar` with the user's initials at the far right whose menu shows name, role and groups and "Sign out".
+- **Tests:** Go table tests cover session sign-in, sign-out and 401, orders (201, 400, 401, 403), and invoice records (200, 401, 404). A sequence test places an order, runs a relay pass, completes the review and checks the approval and the order status, with a table for disputed, approved and rejected. Vitest covers `matchPage`, the workflow steps derived from an invoice's tasks, and initials.
+
 ## Risks / Trade-offs
 
 - **[Transcripts are brittle]** → Print stable fields only, no IDs or wall-clock times; keep transcripts short; the diff on an intended change is the documentation update.
@@ -156,7 +175,7 @@ A coverage review against all twenty capability specs found about half of the li
 - **[Node toolchain and npm supply chain]** → Pinned, exact dependencies: react and react-dom, Material UI (`@mui/material`, `@mui/icons-material`) with Emotion at runtime; vite, typescript, vitest and @vitejs/plugin-react for development. The lockfile is committed and installed with `npm ci`, and Go-only contributors never need Node. The MUI bundle is about 550 kB (170 kB gzipped), acceptable for a page served from localhost. `govulncheck` does not cover npm, so the `examples ui` job runs `npm audit --omit=dev --audit-level=high`.
 - **[Readers copy the demo's cookie identity or form walker into production]** → Banner on the page, doc comments and README say so; the walker is deliberately minimal.
 - **[Non-deterministic Vite output fails the freshness check]** → Pin Vite and Node major in CI; if hashes still vary, commit only the content and check with a content comparison instead of `git diff`.
-- **[SQLite in a scenario test is slower than memstore]** → Only `correlated-tasks`, `notifications` (override section) and `inbox-ui` use it. Each opens a file in a temporary directory with write-ahead logging and immediate transactions, as `sqlkittest.RunTestSQLite` does, rather than `file::memory:`, whose per-connection databases would break a host transaction read from another pooled connection.
+- **[SQLite in a scenario test is slower than memstore]** → Only `correlated-tasks`, `notifications` (override section) and `contextual-ui` use it. Each opens a file in a temporary directory with write-ahead logging and immediate transactions, as `sqlkittest.RunTestSQLite` does, rather than `file::memory:`, whose per-connection databases would break a host transaction read from another pooled connection.
 
 ## Migration Plan
 

@@ -32,7 +32,7 @@ The shared invoice-approval domain.
 
 ## What it leaves out
 
-- **A browser form:** the rendered page is in `inbox-ui`.
+- **A browser form:** the rendered page is in `contextual-ui`.
 - **Other lifecycle operations:** release, delegate and fail are in
   `lifecycle-operations`.
 

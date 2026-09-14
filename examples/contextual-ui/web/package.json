@@ -1,5 +1,5 @@
 {
-  "name": "hmntsk-inbox-ui-demo",
+  "name": "hmntsk-contextual-ui-demo",
   "private": true,
   "description": "Illustration only: a contextual inbox page over the hmntsk HTTP contracts. Not a UI library.",
   "type": "module",

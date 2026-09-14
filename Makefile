@@ -66,9 +66,9 @@ export GOTOOLCHAIN
 
 all: lint split-check test
 
-# The inbox-ui example's page is a React app. Its build is committed and
+# The contextual-ui example's page is a React app. Its build is committed and
 # embedded, so nothing above needs Node; only changing the page does.
-UI_DIR := examples/inbox-ui/web
+UI_DIR := examples/contextual-ui/web
 NPM ?= npm
 
 # npm writes this file on every install, so it is newer than the lockfile
@@ -78,7 +78,7 @@ UI_DEPS := $(UI_DIR)/node_modules/.package-lock.json
 $(UI_DEPS): $(UI_DIR)/package-lock.json
 	$(NPM) --prefix $(UI_DIR) ci
 
-## ui-build: rebuild examples/inbox-ui/dist from the page's source.
+## ui-build: rebuild examples/contextual-ui/dist from the page's source.
 ui-build: $(UI_DEPS)
 	$(NPM) --prefix $(UI_DIR) run build
 

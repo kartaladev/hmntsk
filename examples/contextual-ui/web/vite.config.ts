@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 // The build lands in ../dist, which is committed and embedded by the Go server,
-// so that `go run ./inbox-ui` needs no Node toolchain.
+// so that `go run ./contextual-ui` needs no Node toolchain.
 export default defineConfig({
   plugins: [react()],
   build: {
@@ -14,7 +14,7 @@ export default defineConfig({
     chunkSizeWarningLimit: 700,
   },
   server: {
-    // `npm run dev` proxies the APIs to `go run ./inbox-ui`.
+    // `npm run dev` proxies the APIs to `go run ./contextual-ui`.
     proxy: {
       "/v1": "http://127.0.0.1:8080",
       "/demo": "http://127.0.0.1:8080",

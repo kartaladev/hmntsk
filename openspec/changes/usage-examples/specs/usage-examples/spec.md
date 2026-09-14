@@ -113,25 +113,51 @@ The examples module SHALL be part of the development workspace and of every repo
 - **WHEN** the release order is printed
 - **THEN** it does not include the examples module, and the release documentation states that the examples are never tagged
 
-### Requirement: A browser demo shows a contextual inbox
+### Requirement: A browser demo shows contextual tasks inside an application
 
-The examples SHALL include one browser demo, served by a Go program, that shows:
+The examples SHALL include one browser demo, `contextual-ui`, served by a Go program, that embeds tasks in the pages of a small purchasing application rather than in a stand-alone inbox. It SHALL show:
 
-- inbox buckets with their counts, ordered by urgency;
-- each task linked to its business record through the task type's route;
-- a form rendered from the task type's schemas, through which a task is progressed and completed;
+- a sign-in page that lists the demo users, and a signed-in user's avatar in the top-right corner of every page with a menu to sign out;
+- an inbox page with buckets and their counts, ordered by urgency, with no user switcher on it;
+- an orders page where a purchasing user places an order, which creates the order's invoice and the invoice's review task;
+- an invoice page, reached through the task type's route, that shows the invoice, its order, every step of its review and approval, and a form rendered from the task type's schemas through which the viewer's task is claimed, progressed and completed;
 - a notification count that updates without a page reload when a notification is published for the viewer.
 
-The demo SHALL let the viewer switch between demo users so that per-user buckets and authorization are visible, and SHALL state on the page that this identity mechanism is for demonstration only. The demo SHALL be labelled as an illustration and not as a reusable UI component.
+Completing a review that finds the invoice matches its order SHALL create the invoice's approval task, after the review's completion is committed. The demo SHALL state on the sign-in page that its identity mechanism is for demonstration only, and SHALL be labelled as an illustration and not as a reusable UI component.
 
-#### Scenario: Switching users changes the buckets
+#### Scenario: Signing in shows the user's own inbox
 
-- **WHEN** a viewer switches from one demo user to another
-- **THEN** the buckets and counts shown are those of the selected user
+- **WHEN** a viewer signs in as one demo user, signs out, and signs in as another
+- **THEN** the buckets and counts shown are those of the signed-in user, and the avatar names that user
+
+#### Scenario: An unsigned viewer is sent to sign in
+
+- **WHEN** a viewer with no demo session opens any page
+- **THEN** the sign-in page is shown, and after signing in the viewer returns to the page they opened
+
+#### Scenario: Placing an order starts a review
+
+- **WHEN** a purchasing user places an order with a supplier, description and amount
+- **THEN** the order, its invoice and the invoice's review task exist, and every approver's notification count increases without a reload
+
+#### Scenario: Only purchasing places orders
+
+- **WHEN** a signed-in user outside purchasing places an order
+- **THEN** the order is refused and nothing is created
+
+#### Scenario: A matching review leads to approval
+
+- **WHEN** an approver completes an invoice's review from the invoice page stating that it matches its order
+- **THEN** the invoice's approval task is created, and the invoice page shows the review completed and the approval waiting
+
+#### Scenario: A disputed review ends the workflow
+
+- **WHEN** an approver completes an invoice's review stating that it does not match its order
+- **THEN** no approval task is created and the order is shown as disputed
 
 #### Scenario: Completing a task from the form
 
-- **WHEN** a viewer claims a task, fills in the rendered form with valid output and submits it
+- **WHEN** a viewer claims a task on the invoice page, fills in the rendered form with valid output and submits it
 - **THEN** the task is completed and leaves the viewer's active buckets, and the counts update
 
 #### Scenario: A live notification

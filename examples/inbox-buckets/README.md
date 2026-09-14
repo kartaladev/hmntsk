@@ -36,7 +36,7 @@ The shared invoice-approval domain.
 
 - **Reading a single task:** that authorization is in `record-page`.
 - **Linking a task to its page:** that is in `context-links`.
-- **A browser page over these buckets:** that is `inbox-ui`.
+- **A browser page over these buckets:** that is `contextual-ui`.
 
 ## Run it
 

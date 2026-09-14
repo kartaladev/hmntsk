@@ -265,14 +265,14 @@ jobs:
       # regenerates are the ones the build compiles against.
       - name: Install mockgen
         run: go install go.uber.org/mock/mockgen@v0.6.0
-      # The inbox-ui example's page is built into examples/inbox-ui/dist and
+      # The contextual-ui example's page is built into examples/contextual-ui/dist and
       # committed, so that `go run` needs no Node. Rebuilding it here catches a
       # source change that was never rebuilt.
       - uses: actions/setup-node@v5
         with:
           node-version: "24"
           cache: npm
-          cache-dependency-path: examples/inbox-ui/web/package-lock.json
+          cache-dependency-path: examples/contextual-ui/web/package-lock.json
       - name: Regenerate and diff
         run: |
           set -e
@@ -293,6 +293,6 @@ jobs:
         with:
           node-version: "24"
           cache: npm
-          cache-dependency-path: examples/inbox-ui/web/package-lock.json
+          cache-dependency-path: examples/contextual-ui/web/package-lock.json
       - run: make ui-test
       - run: make ui-audit
