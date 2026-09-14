@@ -54,6 +54,7 @@ broadcaster, err := nats.NewBroadcaster(conn, nats.WithDecodeErrorHandler(logErr
 | Redis channel | `notify.signals` | `redis.WithChannel` |
 | Redis publish timeout | 5s | `redis.WithPublishTimeout` |
 | NATS subject | `notify.signals` | `nats.WithSubject` (no wildcards, whitespace or empty tokens) |
+| NATS subscribe timeout | 5s | `nats.WithSubscribeTimeout` |
 | Signals per message | 500 | none: a larger broadcast is split into several messages |
 
 Instances see each other's signals only when they share a channel or subject.
@@ -61,6 +62,12 @@ Two applications on one broker use different ones.
 
 The NATS subscription uses no queue group, on purpose: a queue group hands each
 message to one instance, and every instance has to receive every signal.
+
+Before the hub reports ready, the NATS broadcaster confirms its subscription
+with a round trip to the server, within the subscribe timeout. A server that
+does not answer in time, such as one unreachable when the hub starts, ends
+`hub.Run` with an error rather than leaving the hub refusing streams with no
+explanation; the host decides when to run it again.
 
 ## Best effort, and what that means
 

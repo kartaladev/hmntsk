@@ -35,17 +35,12 @@ type instance struct {
 func startInstance(t *testing.T, serverURL, subject string, connect ...natsgo.Option) *instance {
 	t.Helper()
 
-	conn, err := natsgo.Connect(serverURL, connect...)
-	require.NoError(t, err)
-	t.Cleanup(conn.Close)
-
-	b, err := nats.NewBroadcaster(conn, nats.WithSubject(subject))
-	require.NoError(t, err)
-
 	in := &instance{signalErrors: make(chan error, 64)}
 
+	var err error
+
 	in.svc, err = notify.New(notify.NewMemoryStore(),
-		notify.WithBroadcaster(b),
+		notify.WithBroadcaster(broadcasterOn(t, serverURL, subject, connect...)),
 		notify.WithSignalErrorHandler(func(_ context.Context, err error) { in.signalErrors <- err }),
 	)
 	require.NoError(t, err)
@@ -56,10 +51,12 @@ func startInstance(t *testing.T, serverURL, subject string, connect ...natsgo.Op
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 
+	var runErr error
+
 	go func() {
 		defer close(done)
 
-		_ = hub.Run(ctx)
+		runErr = hub.Run(ctx)
 	}()
 
 	t.Cleanup(func() {
@@ -79,7 +76,13 @@ func startInstance(t *testing.T, serverURL, subject string, connect ...natsgo.Op
 
 	in.url = server.URL
 
-	require.Eventually(t, hub.Running, testWait, testTick)
+	select {
+	case <-hub.Ready():
+	case <-done:
+		require.FailNowf(t, "the hub stopped before it became ready", "%v", runErr)
+	case <-time.After(testWait):
+		require.FailNow(t, "the hub did not become ready")
+	}
 
 	return in
 }

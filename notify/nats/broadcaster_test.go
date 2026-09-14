@@ -2,6 +2,7 @@ package nats_test
 
 import (
 	"testing"
+	"time"
 
 	natsgo "github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/assert"
@@ -32,6 +33,7 @@ func TestNewBroadcaster(t *testing.T) {
 		t.Helper()
 
 		require.ErrorIs(t, err, nats.ErrConfiguration)
+		require.ErrorIs(t, err, notify.ErrConfiguration, "a broadcaster wiring mistake is a notify wiring mistake")
 		assert.Nil(t, b)
 	}
 
@@ -55,6 +57,25 @@ func TestNewBroadcaster(t *testing.T) {
 				assert.Equal(t, "app-one.signals", b.Subject())
 			},
 		},
+		{
+			name: "the default subscribe timeout applies",
+			conn: conn,
+			assert: func(t *testing.T, b *nats.Broadcaster, err error) {
+				require.NoError(t, err)
+				assert.Equal(t, nats.DefaultSubscribeTimeout, b.SubscribeTimeout())
+			},
+		},
+		{
+			name: "a subscribe timeout replaces the default",
+			conn: conn,
+			opts: []nats.Option{nats.WithSubscribeTimeout(250 * time.Millisecond)},
+			assert: func(t *testing.T, b *nats.Broadcaster, err error) {
+				require.NoError(t, err)
+				assert.Equal(t, 250*time.Millisecond, b.SubscribeTimeout())
+			},
+		},
+		{name: "a zero subscribe timeout", conn: conn, opts: []nats.Option{nats.WithSubscribeTimeout(0)}, assert: configurationError},
+		{name: "a negative subscribe timeout", conn: conn, opts: []nats.Option{nats.WithSubscribeTimeout(-time.Second)}, assert: configurationError},
 		{name: "no connection", assert: configurationError},
 		{name: "an empty subject", conn: conn, opts: subject(""), assert: configurationError},
 		{name: "a single-token wildcard", conn: conn, opts: subject("notify.*"), assert: configurationError},
@@ -79,4 +100,5 @@ func TestDefaults(t *testing.T) {
 
 	assert.Equal(t, "notify.signals", nats.DefaultSubject)
 	assert.Equal(t, 500, nats.MaxSignalsPerMessage)
+	assert.Equal(t, 5*time.Second, nats.DefaultSubscribeTimeout)
 }

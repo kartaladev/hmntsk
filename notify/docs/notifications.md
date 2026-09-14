@@ -132,12 +132,23 @@ go pruner.Run(ctx, time.Hour) // or pruner.Prune(ctx) from a scheduler
 ## Realtime
 
 A `Hub` routes change signals to connected clients. It receives only while the
-host runs it:
+host runs it, and accepts streams only once its broadcaster has confirmed its
+subscription:
 
 ```go
 hub, err := notify.NewHub(svc.Broadcaster())
-go hub.Run(ctx)
+
+runErr := make(chan error, 1)
+go func() { runErr <- hub.Run(ctx) }()
+
+select {
+case <-hub.Ready(): // streams are accepted from here
+case err := <-runErr: // the broadcaster could not subscribe
+}
 ```
+
+Waiting on `Ready` is optional; a host that starts serving at once has its first
+streams refused as unavailable until the hub is ready, and clients retry.
 
 | Concern | Default | Override |
 | --- | --- | --- |
@@ -159,7 +170,16 @@ go hub.Run(ctx)
   instance, a client connected to instance B misses signals for changes written on
   instance A. Supply a broadcaster that crosses instances.
 - A stream requested while the hub is not running is refused as unavailable
-  rather than opened and left silent.
+  rather than opened and left silent. The hub counts as running only once its
+  broadcaster has confirmed its subscription, so a signal broadcast after
+  `Running` reports true, or after `Ready` closes, reaches the instance's streams.
+- **After a broker connection drops**, the broadcaster's client resubscribes on
+  its own and `Running` stays true meanwhile; signals in that gap are lost, and
+  clients recover by re-reading.
+- **A broadcaster of your own** implements `Listen(ctx, deliver, ready)`: it calls
+  `ready` once its subscription is confirmed, and never calling it leaves the hub
+  refusing every stream. `notifytest.RunBroadcasterSuite` checks it against the
+  contract.
 
 ## HTTP and mounting
 

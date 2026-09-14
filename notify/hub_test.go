@@ -2,92 +2,104 @@ package notify_test
 
 import (
 	"context"
-	"sync"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/kartaladev/hmntsk/notify"
 )
 
-// runHub runs a hub on its own goroutine until the test ends, and waits until
-// the hub reports that it is running.
-func runHub(t *testing.T, hub *notify.Hub) (stop func() error) {
+// hubWait bounds every wait in the hub tests. A hub answers far sooner; the
+// bound only turns a hang into a failure.
+const hubWait = 2 * time.Second
+
+// startedRun is one hub.Run on its own goroutine.
+type startedRun struct {
+	cancel context.CancelFunc
+
+	// exited is closed once Run has returned, after err is set.
+	exited chan struct{}
+	err    error
+
+	// ready is the ready function a gated broadcaster handed over, for
+	// startGated's runs.
+	ready func()
+}
+
+// startRun runs a hub on its own goroutine and stops it at cleanup.
+func startRun(t *testing.T, hub *notify.Hub) *startedRun {
 	t.Helper()
 
 	ctx, cancel := context.WithCancel(t.Context())
-	done := make(chan error, 1)
+	run := &startedRun{cancel: cancel, exited: make(chan struct{})}
 
-	go func() { done <- hub.Run(ctx) }()
+	go func() {
+		run.err = hub.Run(ctx)
+		close(run.exited)
+	}()
 
-	deadline := time.Now().Add(2 * time.Second)
-	for !hub.Running() {
-		if time.Now().After(deadline) {
-			cancel()
-			t.Fatal("the hub never reported running")
-		}
+	t.Cleanup(func() { _ = run.stop(t) })
 
-		time.Sleep(time.Millisecond)
+	return run
+}
+
+// stop cancels the run and returns Run's error. It is safe to call more than
+// once.
+func (r *startedRun) stop(t *testing.T) error {
+	t.Helper()
+
+	r.cancel()
+
+	select {
+	case <-r.exited:
+		return r.err
+	case <-time.After(hubWait):
+		t.Error("Run did not return after cancellation")
+
+		return nil
+	}
+}
+
+// runHub runs a hub until the test ends, and waits until the hub is ready.
+func runHub(t *testing.T, hub *notify.Hub) (stop func() error) {
+	t.Helper()
+
+	run := startRun(t, hub)
+
+	select {
+	case <-hub.Ready():
+	case <-run.exited:
+		t.Fatalf("the hub stopped before it was ready: %v", run.err)
+	case <-time.After(hubWait):
+		t.Fatal("the hub never became ready")
 	}
 
-	var once sync.Once
-
-	var result error
-
-	stop = func() error {
-		once.Do(func() {
-			cancel()
-
-			select {
-			case result = <-done:
-			case <-time.After(2 * time.Second):
-				t.Error("Run did not return after cancellation")
-			}
-		})
-
-		return result
-	}
-
-	t.Cleanup(func() { _ = stop() })
-
-	return stop
+	return func() error { return run.stop(t) }
 }
 
 // ready reports whether a subscription has a pending signal, without waiting.
 func ready(subscription *notify.Subscription) bool {
-	select {
-	case <-subscription.Ready():
-		return true
-	default:
-		return false
-	}
+	return closed(subscription.Ready())
 }
 
-// awaitSubscribed broadcasts probes to a recipient until the subscription sees
-// one, because the hub's listener registers asynchronously, and then drains it.
+// awaitSubscribed broadcasts a probe to a recipient, waits for the subscription
+// to see it, and drains it. The hub is ready, so the first broadcast arrives.
 func awaitSubscribed(t *testing.T, broadcaster notify.Broadcaster, subscription *notify.Subscription, recipient string) {
 	t.Helper()
 
 	probe := notify.Signal{Recipient: recipient, Change: notify.ChangeCreated, At: serviceAt}
-	deadline := time.Now().Add(2 * time.Second)
+	require.NoError(t, broadcaster.Broadcast(t.Context(), []notify.Signal{probe}))
 
-	for {
-		require.NoError(t, broadcaster.Broadcast(t.Context(), []notify.Signal{probe}))
-
-		select {
-		case <-subscription.Ready():
-			_, ok := subscription.Take()
-			require.True(t, ok)
-
-			return
-		case <-time.After(5 * time.Millisecond):
-		}
-
-		if time.Now().After(deadline) {
-			t.Fatalf("the subscription for %s never received a signal", recipient)
-		}
+	select {
+	case <-subscription.Ready():
+		_, ok := subscription.Take()
+		require.True(t, ok)
+	case <-time.After(hubWait):
+		t.Fatalf("the subscription for %s never received a signal", recipient)
 	}
 }
 
@@ -290,7 +302,7 @@ func TestHubDelivery(t *testing.T) {
 						got, ok := subscription.Take()
 						require.True(t, ok)
 						assert.Equal(t, signal, got)
-					case <-time.After(2 * time.Second):
+					case <-time.After(hubWait):
 						t.Fatal("an alice subscription did not receive the signal")
 					}
 				}
@@ -379,6 +391,194 @@ func TestHubDelivery(t *testing.T) {
 			runHub(t, hub)
 
 			tc.assert(t, broadcaster, hub)
+		})
+	}
+}
+
+// startGated starts Run over a gated broadcaster, whose Listen hands the test
+// its ready function instead of calling it, and waits for that hand-over.
+func startGated(t *testing.T, hub *notify.Hub, readies <-chan func()) *startedRun {
+	t.Helper()
+
+	run := startRun(t, hub)
+
+	select {
+	case run.ready = <-readies:
+	case <-run.exited:
+		t.Fatalf("Run returned before Listen was called: %v", run.err)
+	case <-time.After(hubWait):
+		t.Fatal("Listen was never called")
+	}
+
+	return run
+}
+
+// closed reports whether a channel is closed, without waiting.
+func closed(ch <-chan struct{}) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
+}
+
+// eventuallyClosed waits briefly for a channel to close.
+func eventuallyClosed(ch <-chan struct{}) bool {
+	select {
+	case <-ch:
+		return true
+	case <-time.After(hubWait):
+		return false
+	}
+}
+
+func TestHubReadiness(t *testing.T) {
+	t.Parallel()
+
+	errListen := errors.New("the broker refused the subscription")
+
+	type testCase struct {
+		name string
+		// listenErr, when set, is what the first Listen returns at once.
+		listenErr error
+		assert    func(t *testing.T, hub *notify.Hub, readies <-chan func())
+	}
+
+	cases := []testCase{
+		{
+			name: "before ready the hub is not running, refuses streams and is not ready",
+			assert: func(t *testing.T, hub *notify.Hub, readies <-chan func()) {
+				readyCh := hub.Ready()
+				startGated(t, hub, readies)
+
+				assert.False(t, hub.Running())
+				_, err := hub.Subscribe("alice")
+				require.ErrorIs(t, err, notify.ErrUnavailable)
+				assert.False(t, closed(readyCh))
+			},
+		},
+		{
+			name: "after ready the hub is running, accepts streams and Ready taken before Run is closed",
+			assert: func(t *testing.T, hub *notify.Hub, readies <-chan func()) {
+				readyCh := hub.Ready()
+				run := startGated(t, hub, readies)
+
+				run.ready()
+
+				assert.True(t, hub.Running())
+				_, err := hub.Subscribe("alice")
+				require.NoError(t, err)
+				assert.True(t, closed(readyCh))
+				assert.True(t, closed(hub.Ready()))
+			},
+		},
+		{
+			name: "after Listen returns the hub stops running and Ready waits for the next run",
+			assert: func(t *testing.T, hub *notify.Hub, readies <-chan func()) {
+				first := startGated(t, hub, readies)
+				first.ready()
+				require.ErrorIs(t, first.stop(t), context.Canceled)
+
+				assert.False(t, hub.Running())
+
+				next := hub.Ready()
+				assert.False(t, closed(next), "Ready after a run ends is open again")
+
+				second := startGated(t, hub, readies)
+				assert.False(t, closed(next))
+
+				second.ready()
+				assert.True(t, eventuallyClosed(next), "the next run's ready closes it")
+				assert.True(t, hub.Running())
+			},
+		},
+		{
+			name:      "a Listen that fails before ready returns its error and never closes Ready",
+			listenErr: errListen,
+			assert: func(t *testing.T, hub *notify.Hub, readies <-chan func()) {
+				readyCh := hub.Ready()
+
+				require.ErrorIs(t, hub.Run(t.Context()), errListen)
+
+				assert.False(t, hub.Running())
+				assert.False(t, closed(readyCh))
+			},
+		},
+		{
+			name: "ready called twice keeps one run receiving",
+			assert: func(t *testing.T, hub *notify.Hub, readies <-chan func()) {
+				run := startGated(t, hub, readies)
+
+				run.ready()
+				run.ready()
+
+				assert.True(t, hub.Running())
+			},
+		},
+		{
+			name: "a late ready after its run ended does not mark the hub running",
+			assert: func(t *testing.T, hub *notify.Hub, readies <-chan func()) {
+				readyCh := hub.Ready()
+				first := startGated(t, hub, readies)
+				require.ErrorIs(t, first.stop(t), context.Canceled)
+
+				first.ready()
+
+				assert.False(t, hub.Running())
+				assert.False(t, closed(readyCh))
+			},
+		},
+		{
+			name: "a late ready from an earlier run does not mark the next run ready",
+			assert: func(t *testing.T, hub *notify.Hub, readies <-chan func()) {
+				first := startGated(t, hub, readies)
+				require.ErrorIs(t, first.stop(t), context.Canceled)
+
+				next := hub.Ready()
+				startGated(t, hub, readies)
+
+				first.ready()
+
+				assert.False(t, hub.Running())
+				assert.False(t, closed(next))
+			},
+		},
+		{
+			name: "a second Run while the first is starting is refused",
+			assert: func(t *testing.T, hub *notify.Hub, readies <-chan func()) {
+				startGated(t, hub, readies)
+
+				assert.ErrorIs(t, hub.Run(t.Context()), notify.ErrConfiguration)
+				assert.False(t, hub.Running(), "the first Run is still starting")
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			broadcaster := notify.NewMockBroadcaster(ctrl)
+			readies := make(chan func(), 1)
+
+			if tc.listenErr != nil {
+				broadcaster.EXPECT().Listen(gomock.Any(), gomock.Any(), gomock.Any()).Return(tc.listenErr)
+			} else {
+				broadcaster.EXPECT().Listen(gomock.Any(), gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, _ func(notify.Signal), ready func()) error {
+						readies <- ready
+						<-ctx.Done()
+
+						return ctx.Err()
+					}).AnyTimes()
+			}
+
+			hub, err := notify.NewHub(broadcaster)
+			require.NoError(t, err)
+
+			tc.assert(t, hub, readies)
 		})
 	}
 }

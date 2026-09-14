@@ -44,13 +44,28 @@ type Signal struct {
 // deployment of more than one instance supplies one that crosses instances,
 // such as notify/redis or notify/nats. Delivery is best effort: a signal lost
 // on the way costs a client nothing it cannot recover by re-reading.
+//
+// notify/notifytest.RunBroadcasterSuite checks an implementation against this
+// contract.
 type Broadcaster interface {
 	// Broadcast hands signals to every listener, on this instance and others.
 	Broadcast(ctx context.Context, signals []Signal) error
-	// Listen calls deliver with every signal broadcast, until ctx is done, and
-	// then returns ctx's error. deliver must not block: a slow deliver slows
-	// every broadcast.
-	Listen(ctx context.Context, deliver func(Signal)) error
+	// Listen subscribes, calls ready once the subscription is confirmed, and
+	// then calls deliver with every signal broadcast, until ctx is done, when it
+	// returns ctx's error.
+	//
+	// Confirmed means that a signal broadcast from then on reaches deliver: an
+	// implementation calls ready only once whatever its transport offers to
+	// confirm a subscription has succeeded. It calls ready at most once, from
+	// within Listen and before returning, and never when it returns an error
+	// instead of subscribing. It holds nothing Broadcast needs while calling
+	// ready, so a broadcast made from inside ready is delivered. [Hub] reports
+	// itself running only after ready, so a Listen that never calls it leaves
+	// the hub refusing every stream.
+	//
+	// deliver must not block: a slow deliver slows every broadcast. A nil
+	// deliver or ready is an error matching [ErrConfiguration].
+	Listen(ctx context.Context, deliver func(Signal), ready func()) error
 }
 
 // InProcessBroadcaster is the default [Broadcaster]: it delivers each broadcast
@@ -82,10 +97,14 @@ func (b *InProcessBroadcaster) Broadcast(_ context.Context, signals []Signal) er
 	return nil
 }
 
-// Listen implements [Broadcaster].
-func (b *InProcessBroadcaster) Listen(ctx context.Context, deliver func(Signal)) error {
-	if deliver == nil {
+// Listen implements [Broadcaster]. It is ready as soon as the listener is
+// registered: every broadcast after that reaches it.
+func (b *InProcessBroadcaster) Listen(ctx context.Context, deliver func(Signal), ready func()) error {
+	switch {
+	case deliver == nil:
 		return &ConfigurationError{Detail: "a listener needs a deliver function"}
+	case ready == nil:
+		return &ConfigurationError{Detail: "a listener needs a ready function"}
 	}
 
 	b.mu.Lock()
@@ -95,6 +114,8 @@ func (b *InProcessBroadcaster) Listen(ctx context.Context, deliver func(Signal))
 
 	b.listeners[&deliver] = struct{}{}
 	b.mu.Unlock()
+
+	ready()
 
 	<-ctx.Done()
 

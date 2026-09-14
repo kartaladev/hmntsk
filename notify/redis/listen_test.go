@@ -32,8 +32,9 @@ type listening struct {
 	cancel      context.CancelFunc
 }
 
-// listen starts Listen on a channel. The test must cancel it; a case that does
-// not is cancelled when the case ends.
+// listen starts Listen on a channel and returns once the broadcaster reports its
+// subscription ready, so a signal broadcast afterwards is delivered. The test
+// must cancel it; a case that does not is cancelled when the case ends.
 func listen(t *testing.T, client goredis.UniversalClient, channel string) *listening {
 	t.Helper()
 
@@ -54,39 +55,23 @@ func listen(t *testing.T, client goredis.UniversalClient, channel string) *liste
 	ctx, cancel := context.WithCancel(context.Background())
 	l.cancel = cancel
 
-	go func() { l.done <- b.Listen(ctx, func(s notify.Signal) { l.signals <- s }) }()
+	ready := make(chan struct{})
+
+	go func() {
+		l.done <- b.Listen(ctx, func(s notify.Signal) { l.signals <- s }, func() { close(ready) })
+	}()
 
 	t.Cleanup(cancel)
 
-	return l
-}
-
-// awaitLive broadcasts a signal until the listener delivers one, which proves
-// its subscription is live, and drains it.
-func (l *listening) awaitLive(t *testing.T) {
-	t.Helper()
-
-	require.Eventually(t, func() bool {
-		if err := l.broadcaster.Broadcast(t.Context(), signalsFor(1)); err != nil {
-			return false
-		}
-
-		select {
-		case <-l.signals:
-			return true
-		case <-time.After(testTick):
-			return false
-		}
-	}, testWait, testTick, "the listener receives a broadcast")
-
-	// Broadcasts that crossed with the one delivered may still arrive.
-	for {
-		select {
-		case <-l.signals:
-		case <-time.After(2 * testTick):
-			return
-		}
+	select {
+	case <-ready:
+	case err := <-l.done:
+		require.FailNowf(t, "Listen returned before it was ready", "%v", err)
+	case <-time.After(testWait):
+		require.FailNow(t, "Listen did not become ready")
 	}
+
+	return l
 }
 
 // TestListen runs its cases one at a time and not in parallel with the rest of
@@ -108,8 +93,6 @@ func TestListen(t *testing.T) {
 		{
 			name: "a broadcast signal is delivered decoded",
 			act: func(t *testing.T, l *listening) error {
-				l.awaitLive(t)
-
 				return l.broadcaster.Broadcast(t.Context(), signalsFor(3))
 			},
 			assert: func(t *testing.T, l *listening, err error) {
@@ -131,7 +114,6 @@ func TestListen(t *testing.T) {
 		{
 			name: "a message in an unknown format version is reported and receiving continues",
 			act: func(t *testing.T, l *listening) error {
-				l.awaitLive(t)
 				require.NoError(t, client.Publish(t.Context(), l.broadcaster.Channel(),
 					`{"v":99,"signals":[{"recipient":"bob","change":"created","at":"2026-09-14T08:30:00Z"}]}`).Err())
 
@@ -147,7 +129,6 @@ func TestListen(t *testing.T) {
 		{
 			name: "a malformed message is reported and receiving continues",
 			act: func(t *testing.T, l *listening) error {
-				l.awaitLive(t)
 				require.NoError(t, client.Publish(t.Context(), l.broadcaster.Channel(), "not json").Err())
 
 				return l.broadcaster.Broadcast(t.Context(), signalsFor(1))
@@ -162,7 +143,6 @@ func TestListen(t *testing.T) {
 		{
 			name: "cancelling stops listening and unsubscribes",
 			act: func(t *testing.T, l *listening) error {
-				l.awaitLive(t)
 				l.cancel()
 
 				select {

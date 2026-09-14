@@ -156,30 +156,48 @@ func (b *Broadcaster) publish(ctx context.Context, payload []byte) error {
 const listenBuffer = 1000
 
 // Listen implements [notify.Broadcaster]. It subscribes to the channel, waits
-// for the broker to confirm the subscription, and then calls deliver with every
-// signal of every message, until ctx is done, when it unsubscribes and returns
-// ctx's error.
+// for the broker to confirm the subscription, calls ready once, and then calls
+// deliver with every signal of every message, until ctx is done, when it
+// unsubscribes and returns ctx's error.
+//
+// ready is called only after the broker has confirmed the subscription, so a
+// signal broadcast from then on, by this instance or another, is delivered. A
+// nil deliver or ready is a [ConfigurationError], returned before
+// subscribing: it breaks the notify contract rather than this broadcaster's
+// configuration.
 //
 // A message that cannot be read is reported to the decode error handler and
 // delivers nothing; receiving continues. After a dropped connection the client
 // resubscribes on its own, and signals published while it was away are not
-// replayed. A subscription the client could not make, or one that ends while
-// ctx is still live, is returned as an error.
-func (b *Broadcaster) Listen(ctx context.Context, deliver func(notify.Signal)) error {
-	if deliver == nil {
+// replayed; ready is not called again. A subscription the client could not make,
+// or one that ends while ctx is still live, is returned as an error, and ready is
+// not called for a subscription that was never confirmed.
+func (b *Broadcaster) Listen(ctx context.Context, deliver func(notify.Signal), ready func()) error {
+	switch {
+	case deliver == nil:
 		return &ConfigurationError{Detail: "Listen needs a deliver function"}
+	case ready == nil:
+		return &ConfigurationError{Detail: "Listen needs a ready function"}
 	}
 
 	pubsub := b.client.Subscribe(ctx, b.channel)
 	defer func() { _ = pubsub.Close() }()
 
-	if _, err := pubsub.Receive(ctx); err != nil {
+	reply, err := pubsub.Receive(ctx)
+	if err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 
 		return fmt.Errorf("redis: subscribe to channel %q: %w", b.channel, err)
 	}
+
+	if _, confirmed := reply.(*goredis.Subscription); !confirmed {
+		return fmt.Errorf("redis: subscribe to channel %q: the broker answered %T, not a subscription confirmation",
+			b.channel, reply)
+	}
+
+	ready()
 
 	messages := pubsub.Channel(goredis.WithChannelSize(listenBuffer))
 

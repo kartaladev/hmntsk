@@ -79,17 +79,17 @@ func (c *MockBroadcasterBroadcastCall) DoAndReturn(f func(context.Context, []Sig
 }
 
 // Listen mocks base method.
-func (m *MockBroadcaster) Listen(ctx context.Context, deliver func(Signal)) error {
+func (m *MockBroadcaster) Listen(ctx context.Context, deliver func(Signal), ready func()) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Listen", ctx, deliver)
+	ret := m.ctrl.Call(m, "Listen", ctx, deliver, ready)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Listen indicates an expected call of Listen.
-func (mr *MockBroadcasterMockRecorder) Listen(ctx, deliver any) *MockBroadcasterListenCall {
+func (mr *MockBroadcasterMockRecorder) Listen(ctx, deliver, ready any) *MockBroadcasterListenCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Listen", reflect.TypeOf((*MockBroadcaster)(nil).Listen), ctx, deliver)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Listen", reflect.TypeOf((*MockBroadcaster)(nil).Listen), ctx, deliver, ready)
 	return &MockBroadcasterListenCall{Call: call}
 }
 
@@ -105,13 +105,13 @@ func (c *MockBroadcasterListenCall) Return(arg0 error) *MockBroadcasterListenCal
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockBroadcasterListenCall) Do(f func(context.Context, func(Signal)) error) *MockBroadcasterListenCall {
+func (c *MockBroadcasterListenCall) Do(f func(context.Context, func(Signal), func()) error) *MockBroadcasterListenCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBroadcasterListenCall) DoAndReturn(f func(context.Context, func(Signal)) error) *MockBroadcasterListenCall {
+func (c *MockBroadcasterListenCall) DoAndReturn(f func(context.Context, func(Signal), func()) error) *MockBroadcasterListenCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

@@ -252,3 +252,69 @@ func Example_typedFacade() {
 	// approved: true within budget
 	// in the inbox: 1 approval
 }
+
+// ExampleWithEventHandlerFactory builds a typed completion consumer from the
+// service it observes, at construction, with no variable assigned afterwards.
+func ExampleWithEventHandlerFactory() {
+	type SpendingRequest struct {
+		Amount int64 `json:"amount"`
+	}
+
+	type SpendingDecision struct {
+		Approved bool `json:"approved"`
+	}
+
+	var approvals hmntsk.Kind[SpendingRequest, SpendingDecision]
+
+	svc, err := hmntsk.New(memstore.New(),
+		hmntsk.WithGroupResolver(hmntsk.NewStaticAssignment(map[string][]string{
+			"finance-approvers": {"alice"},
+		})),
+		hmntsk.WithEventHandlerFactory(func(svc *hmntsk.Service) ([]hmntsk.EventHandler, error) {
+			// Configuring the service is fine here; running lifecycle
+			// operations is not, because New has not returned yet.
+			kind, err := hmntsk.Define[SpendingRequest, SpendingDecision](svc, hmntsk.TypeSpec{
+				Name:              "approval",
+				DefaultAssignment: hmntsk.CandidatePool{Groups: []string{"finance-approvers"}},
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			approvals = kind
+
+			return []hmntsk.EventHandler{kind.OnCompleted(
+				func(_ context.Context, event hmntsk.Event, decision SpendingDecision) error {
+					fmt.Println("completed:", event.TaskType, "approved:", decision.Approved)
+
+					return nil
+				},
+			)}, nil
+		}),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ctx := context.Background()
+
+	created, err := approvals.Create(ctx, SpendingRequest{Amount: 1299},
+		hmntsk.CreateRequest{Actor: "purchasing-service"})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	id := created.Task.ID
+
+	if _, err := svc.Start(ctx, hmntsk.TaskRequest{TaskID: id, Actor: "alice"}); err != nil {
+		log.Fatal(err)
+	}
+
+	if _, err := approvals.Complete(ctx, SpendingDecision{Approved: true},
+		hmntsk.TaskRequest{TaskID: id, Actor: "alice"}); err != nil {
+		log.Fatal(err)
+	}
+
+	// Output:
+	// completed: approval approved: true
+}

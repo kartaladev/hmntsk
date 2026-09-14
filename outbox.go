@@ -65,6 +65,14 @@ type OutboxEntry struct {
 	NextAttemptAt *time.Time
 	// LastError is the failure recorded by the most recent attempt, empty when
 	// none has failed.
+	//
+	// It is text for a person to read, not a format to parse. The relay writes
+	// one "<sink>: <message>" part per sink that refused the attempt, in the
+	// order the sinks are configured, joined with "; " — and a sink's message
+	// may itself contain that separator. Which sinks took the event is
+	// [OutboxEntry.Accepted]. A sink's typed error, to match with errors.Is or
+	// errors.As, exists only while the pass runs, through the relay's error
+	// handler (relay.WithRelayErrorHandler); per-sink failures are not stored.
 	LastError string
 	// Accepted names the sinks that have taken this event. A retry targets only
 	// the sinks absent from it.
@@ -120,7 +128,8 @@ type AttemptRecord struct {
 	// NextAttemptAt is when the event becomes due again.
 	NextAttemptAt time.Time
 	// LastError describes the failure, and replaces whatever was recorded
-	// before.
+	// before. It is human-readable text in the shape described on
+	// [OutboxEntry.LastError], not a format to parse.
 	LastError string
 }
 
@@ -158,7 +167,8 @@ type DeadLetter struct {
 	EventID string
 	// Attempts is the attempt count after the attempt that exhausted it.
 	Attempts int
-	// LastError is the failure that ended it.
+	// LastError is the failure that ended it. It is human-readable text in the
+	// shape described on [OutboxEntry.LastError], not a format to parse.
 	LastError string
 	// Accepted is every sink that took the event before it was given up on,
 	// including any that took it on this final attempt.

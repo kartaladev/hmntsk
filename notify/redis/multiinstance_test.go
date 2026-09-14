@@ -35,16 +35,12 @@ type instance struct {
 func startInstance(t *testing.T, broker *goredis.Client, channel string, opts ...redis.Option) *instance {
 	t.Helper()
 
-	client := goredis.NewClient(broker.Options())
-	t.Cleanup(func() { _ = client.Close() })
-
-	b, err := redis.NewBroadcaster(client, append([]redis.Option{redis.WithChannel(channel)}, opts...)...)
-	require.NoError(t, err)
-
 	in := &instance{signalErrors: make(chan error, 64)}
 
+	var err error
+
 	in.svc, err = notify.New(notify.NewMemoryStore(),
-		notify.WithBroadcaster(b),
+		notify.WithBroadcaster(newBroadcaster(t, broker, channel, opts...)),
 		notify.WithSignalErrorHandler(func(_ context.Context, err error) { in.signalErrors <- err }),
 	)
 	require.NoError(t, err)
@@ -55,10 +51,12 @@ func startInstance(t *testing.T, broker *goredis.Client, channel string, opts ..
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 
+	var runErr error
+
 	go func() {
 		defer close(done)
 
-		_ = hub.Run(ctx)
+		runErr = hub.Run(ctx)
 	}()
 
 	t.Cleanup(func() {
@@ -75,7 +73,13 @@ func startInstance(t *testing.T, broker *goredis.Client, channel string, opts ..
 
 	in.url = server.URL
 
-	require.Eventually(t, hub.Running, testWait, testTick)
+	select {
+	case <-hub.Ready():
+	case <-done:
+		require.FailNowf(t, "the hub stopped before it became ready", "%v", runErr)
+	case <-time.After(testWait):
+		require.FailNow(t, "the hub did not become ready")
+	}
 
 	return in
 }

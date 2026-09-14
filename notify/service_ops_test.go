@@ -350,7 +350,9 @@ func (r *recording) Broadcast(_ context.Context, signals []notify.Signal) error 
 }
 
 // Listen implements notify.Broadcaster.
-func (r *recording) Listen(ctx context.Context, _ func(notify.Signal)) error {
+func (r *recording) Listen(ctx context.Context, _ func(notify.Signal), ready func()) error {
+	ready()
+
 	<-ctx.Done()
 
 	return ctx.Err()

@@ -96,6 +96,27 @@ svc, err := hmntsk.New(store,
 )
 ```
 
+A consumer that needs the engine it observes — a typed completion handler from
+`Kind.OnCompleted`, or one that creates a follow-up task — is built from the
+service during construction, with no variable assigned after `New` returns:
+
+```go
+svc, err := hmntsk.New(store,
+    hmntsk.WithEventHandlerFactory(func(svc *hmntsk.Service) ([]hmntsk.EventHandler, error) {
+        approvals, err := hmntsk.Define[Request, Decision](svc, spec)
+        if err != nil {
+            return nil, err // fails New
+        }
+
+        return []hmntsk.EventHandler{approvals.OnCompleted(onDecision)}, nil
+    }),
+)
+```
+
+Consumers run in registration order, factories included. A factory may
+configure the service (`Register`, `Define`) but must not run lifecycle
+operations: `New` has not returned, and later consumers are not attached yet.
+
 `New` refuses a store whose event sink cannot join your transaction. That
 configuration works in tests and loses events in production, exactly when they
 matter, so it fails at startup instead.

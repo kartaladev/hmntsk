@@ -8,6 +8,10 @@
 // notify signal format; never a notification's title, links, data, kind or
 // subject.
 //
+// Listening reports ready only once the broker has confirmed the subscription,
+// so a hub running over this broadcaster accepts streams only when a signal
+// broadcast from then on will reach them.
+//
 // Broadcasting is best effort. An unreachable broker never fails the
 // notification write that produced a signal, signals broadcast while an
 // instance is disconnected are not replayed to it, and the notification store

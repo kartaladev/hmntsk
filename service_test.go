@@ -66,24 +66,32 @@ type harness struct {
 func newHarness(t *testing.T, opts ...hmntsk.Option) *harness {
 	t.Helper()
 
-	registry := hmntsk.NewRegistry()
-	require.NoError(t, registry.Register(approvalSpec()))
-	require.NoError(t, registry.Register(hmntsk.TypeSpec{Name: "freeform"}))
-
 	store := memstore.New()
 	rec := &recorder{}
 
-	base := []hmntsk.Option{
-		hmntsk.WithRegistry(registry),
-		hmntsk.WithGroupResolver(testDirectory()),
-		hmntsk.WithClock(hmntsk.ClockFunc(func() time.Time { return testNow })),
-		hmntsk.WithEventHandlers(rec),
-	}
+	base := append(baseOptions(t, approvalSpec()), hmntsk.WithEventHandlers(rec))
 
 	svc, err := hmntsk.New(store, append(base, opts...)...)
 	require.NoError(t, err)
 
 	return &harness{svc: svc, store: store, recorder: rec}
+}
+
+// baseOptions is the wiring every engine test starts from: a registry holding
+// the freeform type and any extra specs, the test directory and the fixed clock.
+func baseOptions(t *testing.T, specs ...hmntsk.TypeSpec) []hmntsk.Option {
+	t.Helper()
+
+	registry := hmntsk.NewRegistry()
+	for _, spec := range append(specs, hmntsk.TypeSpec{Name: "freeform"}) {
+		require.NoError(t, registry.Register(spec))
+	}
+
+	return []hmntsk.Option{
+		hmntsk.WithRegistry(registry),
+		hmntsk.WithGroupResolver(testDirectory()),
+		hmntsk.WithClock(hmntsk.ClockFunc(func() time.Time { return testNow })),
+	}
 }
 
 // createApproval creates a pooled approval task claimable by alice and bob.

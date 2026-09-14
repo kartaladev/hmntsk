@@ -127,8 +127,6 @@ func TestListenResumesAfterTheConnectionDrops(t *testing.T) {
 	t.Cleanup(conn.Close)
 
 	l := listen(t, conn, "test.reconnect")
-	l.awaitLive(t)
-
 	p.dropAll()
 
 	select {

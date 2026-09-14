@@ -25,6 +25,10 @@ type Service struct {
 	eventIDs        *UUIDv7Generator
 	handlers        []EventHandler
 	onDispatchError func(ctx context.Context, err error)
+
+	// handlerFactories is what the event handler options registered, in order.
+	// [New] resolves it into handlers once construction has succeeded.
+	handlerFactories []func(*Service) ([]EventHandler, error)
 }
 
 // Option configures a [Service] at construction.
@@ -74,13 +78,37 @@ func WithIDGenerator(generator IDGenerator) Option {
 }
 
 // WithEventHandlers adds in-process consumers, run after the transaction that
-// produced the events commits.
+// produced the events commits. The default is none. Consumers run in the order
+// they were registered, across this option and [WithEventHandlerFactory]. Nil
+// consumers are ignored.
 func WithEventHandlers(handlers ...EventHandler) Option {
 	return func(s *Service) {
-		for _, handler := range handlers {
-			if handler != nil {
-				s.handlers = append(s.handlers, handler)
-			}
+		s.handlerFactories = append(s.handlerFactories, func(*Service) ([]EventHandler, error) {
+			return handlers, nil
+		})
+	}
+}
+
+// WithEventHandlerFactory adds in-process consumers built from the service being
+// constructed, for a consumer that needs the engine it observes, such as one made
+// by [Kind.OnCompleted] from a [Define] handle, or one that creates a follow-up
+// task. The default is none.
+//
+// [New] calls factory once, after every option is applied and the store is
+// accepted, and before it returns. The consumers it returns take the factory's
+// place in registration order, alongside those from [WithEventHandlers]. An error
+// from factory fails New, wrapped so that [errors.Is] and [errors.As] still find
+// it. A nil factory, and nil consumers in what it returns, are ignored.
+//
+// The service a factory receives is not yet returned by New. A factory may
+// configure it, calling methods such as [Service.Register], [Define],
+// [Service.Registry] or [Service.Clock], but must not run lifecycle operations:
+// the consumers of registrations after it are not attached yet, so they would not
+// see those events. The events themselves are still recorded durably.
+func WithEventHandlerFactory(factory func(*Service) ([]EventHandler, error)) Option {
+	return func(s *Service) {
+		if factory != nil {
+			s.handlerFactories = append(s.handlerFactories, factory)
 		}
 	}
 }
@@ -132,7 +160,32 @@ func New(store Store, opts ...Option) (*Service, error) {
 		}
 	}
 
+	if err := svc.resolveHandlers(); err != nil {
+		return nil, err
+	}
+
 	return svc, nil
+}
+
+// resolveHandlers calls the registered factories in registration order and keeps
+// the non-nil consumers they return, which are the consumers deliver runs.
+func (s *Service) resolveHandlers() error {
+	for _, factory := range s.handlerFactories {
+		built, err := factory(s)
+		if err != nil {
+			return fmt.Errorf("hmntsk: build event handlers: %w", err)
+		}
+
+		for _, handler := range built {
+			if handler != nil {
+				s.handlers = append(s.handlers, handler)
+			}
+		}
+	}
+
+	s.handlerFactories = nil
+
+	return nil
 }
 
 // Registry returns the task type registry this service validates against.

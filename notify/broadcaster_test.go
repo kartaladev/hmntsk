@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/kartaladev/hmntsk/notify"
+	"github.com/kartaladev/hmntsk/notify/notifytest"
 )
 
 // listener collects what one Listen call delivers.
@@ -20,12 +21,13 @@ type listener struct {
 	cancel   context.CancelFunc
 }
 
-// listen starts a Listen call on its own goroutine.
+// listen starts a Listen call on its own goroutine and waits until it is ready.
 func listen(t *testing.T, broadcaster notify.Broadcaster) *listener {
 	t.Helper()
 
 	ctx, cancel := context.WithCancel(t.Context())
 	l := &listener{done: make(chan error, 1), cancel: cancel}
+	ready := make(chan struct{})
 
 	go func() {
 		l.done <- broadcaster.Listen(ctx, func(signal notify.Signal) {
@@ -33,13 +35,19 @@ func listen(t *testing.T, broadcaster notify.Broadcaster) *listener {
 			defer l.mu.Unlock()
 
 			l.received = append(l.received, signal)
-		})
+		}, func() { close(ready) })
 	}()
 
 	t.Cleanup(func() {
 		cancel()
 		<-l.done
 	})
+
+	select {
+	case <-ready:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Listen never became ready")
+	}
 
 	return l
 }
@@ -70,50 +78,47 @@ func (l *listener) stop(t *testing.T) error {
 	}
 }
 
-// broadcastUntil broadcasts a probe until every listener has received it, since
-// a Listen call registers asynchronously, and then broadcasts signals once.
-func broadcastUntil(t *testing.T, broadcaster notify.Broadcaster, listeners []*listener, signals []notify.Signal) {
-	t.Helper()
+func TestInProcessBroadcasterConformance(t *testing.T) {
+	t.Parallel()
 
-	probe := notify.Signal{Recipient: "probe", Change: notify.ChangeCreated, At: serviceAt}
-	deadline := time.Now().Add(2 * time.Second)
+	notifytest.RunBroadcasterSuite(t, func(*testing.T) (notify.Broadcaster, notify.Broadcaster) {
+		broadcaster := notify.NewInProcessBroadcaster()
 
-	for {
-		require.NoError(t, broadcaster.Broadcast(t.Context(), []notify.Signal{probe}))
-
-		ready := true
-
-		for _, l := range listeners {
-			if len(l.signals()) == 0 {
-				ready = false
-			}
-		}
-
-		if ready {
-			break
-		}
-
-		if time.Now().After(deadline) {
-			t.Fatal("a listener never received a broadcast")
-		}
-
-		time.Sleep(5 * time.Millisecond)
-	}
-
-	require.NoError(t, broadcaster.Broadcast(t.Context(), signals))
+		return broadcaster, broadcaster
+	})
 }
 
-// withoutProbes drops the probes broadcastUntil sent.
-func withoutProbes(signals []notify.Signal) []notify.Signal {
-	var out []notify.Signal
+// The conformance suite checks the sentinel; this checks the in-process
+// broadcaster's own refusal is the notify ConfigurationError type.
+func TestInProcessBroadcasterListenRefusesMissingFunctions(t *testing.T) {
+	t.Parallel()
 
-	for _, signal := range signals {
-		if signal.Recipient != "probe" {
-			out = append(out, signal)
-		}
+	type testCase struct {
+		name    string
+		deliver func(notify.Signal)
+		ready   func()
+		assert  func(t *testing.T, err error)
 	}
 
-	return out
+	isConfiguration := func(t *testing.T, err error) {
+		t.Helper()
+
+		var configuration *notify.ConfigurationError
+		assert.ErrorAs(t, err, &configuration)
+	}
+
+	cases := []testCase{
+		{name: "a nil deliver", ready: func() {}, assert: isConfiguration},
+		{name: "a nil ready", deliver: func(notify.Signal) {}, assert: isConfiguration},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			tc.assert(t, notify.NewInProcessBroadcaster().Listen(t.Context(), tc.deliver, tc.ready))
+		})
+	}
 }
 
 func TestInProcessBroadcaster(t *testing.T) {
@@ -133,25 +138,23 @@ func TestInProcessBroadcaster(t *testing.T) {
 			assert: func(t *testing.T, broadcaster *notify.InProcessBroadcaster) {
 				one, two := listen(t, broadcaster), listen(t, broadcaster)
 
-				broadcastUntil(t, broadcaster, []*listener{one, two}, []notify.Signal{alice, bob})
+				require.NoError(t, broadcaster.Broadcast(t.Context(), []notify.Signal{alice, bob}))
 
-				assert.Equal(t, []notify.Signal{alice, bob}, withoutProbes(one.signals()))
-				assert.Equal(t, []notify.Signal{alice, bob}, withoutProbes(two.signals()))
+				assert.Equal(t, []notify.Signal{alice, bob}, one.signals())
+				assert.Equal(t, []notify.Signal{alice, bob}, two.signals())
 			},
 		},
 		{
 			name: "a cancelled listener returns and receives nothing more",
 			assert: func(t *testing.T, broadcaster *notify.InProcessBroadcaster) {
 				stopped, running := listen(t, broadcaster), listen(t, broadcaster)
-				broadcastUntil(t, broadcaster, []*listener{stopped, running}, nil)
 
 				assert.ErrorIs(t, stopped.stop(t), context.Canceled)
 
-				before := len(stopped.signals())
-				broadcastUntil(t, broadcaster, []*listener{running}, []notify.Signal{alice})
+				require.NoError(t, broadcaster.Broadcast(t.Context(), []notify.Signal{alice}))
 
-				assert.Len(t, stopped.signals(), before)
-				assert.Contains(t, running.signals(), alice)
+				assert.Empty(t, stopped.signals())
+				assert.Equal(t, []notify.Signal{alice}, running.signals())
 			},
 		},
 		{

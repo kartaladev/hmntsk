@@ -33,7 +33,15 @@ type Hub struct {
 	writeTimeout time.Duration
 	maxStreams   int
 
+	// running is true only while a run's broadcaster has confirmed its
+	// subscription. It is written under runMu and read without it.
 	running atomic.Bool
+
+	// runMu guards the run state: the run in progress, if any, and the channel
+	// Ready hands out.
+	runMu   sync.Mutex
+	current *hubRun
+	readyCh chan struct{}
 
 	mu            sync.Mutex
 	subscriptions map[string]map[*Subscription]struct{}
@@ -87,6 +95,7 @@ func NewHub(broadcaster Broadcaster, opts ...HubOption) (*Hub, error) {
 		heartbeat:     DefaultHeartbeat,
 		writeTimeout:  DefaultWriteTimeout,
 		maxStreams:    DefaultMaxStreamsPerRecipient,
+		readyCh:       make(chan struct{}),
 		subscriptions: make(map[string]map[*Subscription]struct{}),
 	}
 
@@ -115,22 +124,104 @@ func NewHub(broadcaster Broadcaster, opts ...HubOption) (*Hub, error) {
 }
 
 // Run receives signals from the broadcaster until ctx is cancelled, and returns
-// ctx's error. While it runs, [Hub.Running] reports true.
+// ctx's error, or the broadcaster's error when it could not subscribe.
 //
-// It blocks, and a hub runs once at a time: a second Run while one is running is
-// a [ConfigurationError].
+// A run starts unready: the hub refuses streams until the broadcaster confirms
+// its subscription, and only then does [Hub.Running] report true and
+// [Hub.Ready] close. A broadcaster that never confirms leaves the hub refusing
+// every stream as unavailable.
+//
+// It blocks, and a hub runs once at a time: a second Run while one is starting
+// or running is a [ConfigurationError]. A hub whose Run has returned may be run
+// again.
 func (h *Hub) Run(ctx context.Context) error {
-	if !h.running.CompareAndSwap(false, true) {
+	h.runMu.Lock()
+
+	if h.current != nil {
+		h.runMu.Unlock()
+
 		return &ConfigurationError{Detail: "the hub is already running; run it once"}
 	}
 
-	defer h.running.Store(false)
+	run := &hubRun{}
+	h.current = run
 
-	return h.broadcaster.Listen(ctx, h.deliver)
+	h.runMu.Unlock()
+
+	defer h.endRun()
+
+	return h.broadcaster.Listen(ctx, h.deliver, func() { h.markReady(run) })
 }
 
-// Running reports whether the hub is receiving signals.
+// hubRun identifies one [Hub.Run] by its address. It has a field because
+// pointers to distinct zero-size values may compare equal.
+type hubRun struct{ _ byte }
+
+// markReady records that a run's broadcaster has subscribed. It changes nothing
+// for a run that is not the current one, such as one that has ended, or when the
+// current run is already receiving, so a late or repeated ready is harmless.
+func (h *Hub) markReady(run *hubRun) {
+	h.runMu.Lock()
+	defer h.runMu.Unlock()
+
+	if h.current != run || h.running.Load() {
+		return
+	}
+
+	h.running.Store(true)
+	close(h.readyCh)
+}
+
+// endRun returns the hub to idle. A Ready channel the run closed is replaced by
+// an open one for the next run; one it never closed is kept, so that a host
+// still waiting on it is woken by whichever run subscribes next.
+func (h *Hub) endRun() {
+	h.runMu.Lock()
+	defer h.runMu.Unlock()
+
+	h.current = nil
+	h.running.Store(false)
+
+	select {
+	case <-h.readyCh:
+		h.readyCh = make(chan struct{})
+	default:
+	}
+}
+
+// Running reports whether the hub is receiving signals: a run is in progress and
+// its broadcaster has confirmed its subscription, so a signal broadcast now
+// reaches this instance's streams, within the broadcaster's best effort.
+//
+// After a broker connection drops, the broadcaster's client resubscribes on its
+// own and Running stays true meanwhile; signals in that gap are lost, which the
+// best-effort contract allows.
 func (h *Hub) Running() bool { return h.running.Load() }
+
+// Ready returns a channel that is closed once the run in progress, or the next
+// run when none is, has its broadcaster's subscription confirmed. It lets a host
+// or a test wait for the hub instead of polling [Hub.Running]:
+//
+//	runErr := make(chan error, 1)
+//	go func() { runErr <- hub.Run(ctx) }()
+//
+//	select {
+//	case <-hub.Ready():
+//		// streams are accepted from here
+//	case err := <-runErr:
+//		// the broadcaster could not subscribe; Ready will not close for this run
+//	}
+//
+// A receive says the hub became ready at some point after the call, not that it
+// still is: a channel held across a stop stays closed, and [Hub.Running] gives
+// the current answer. A run that fails before its broadcaster is ready never
+// closes the channel.
+func (h *Hub) Ready() <-chan struct{} {
+	h.runMu.Lock()
+	defer h.runMu.Unlock()
+
+	return h.readyCh
+}
 
 // Heartbeat is how often a transport writes to an idle stream.
 func (h *Hub) Heartbeat() time.Duration { return h.heartbeat }
