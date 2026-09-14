@@ -287,6 +287,19 @@ func (s *Service) Eligible(ctx context.Context, task Task, actor string) (bool, 
 	return IsEligible(ctx, s.resolver, task.Candidates, actor)
 }
 
+// ResolveCandidates expands a pool into the actors eligible for it, sorted and
+// deduplicated with exclusions removed, exactly as creation does. It is
+// [ResolveCandidates] over the directory this service was built with, so that a
+// consumer expanding a pool can never disagree with the engine about who is
+// eligible.
+//
+// Where [Service.Eligible] answers "may this actor act?", this answers "who
+// may?". A directory that fails, or none configured for a pool that names
+// groups, is an error matching [ErrGroupResolution].
+func (s *Service) ResolveCandidates(ctx context.Context, pool CandidatePool) ([]string, error) {
+	return ResolveCandidates(ctx, s.resolver, pool)
+}
+
 // History returns a task's transition records, oldest first.
 func (s *Service) History(ctx context.Context, id TaskID) ([]TransitionRecord, error) {
 	return s.store.History(ctx, id)

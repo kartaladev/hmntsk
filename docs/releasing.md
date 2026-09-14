@@ -78,6 +78,7 @@ below imports notify; an hmntsk module that does waits for this step.
 13. transport/http         depends on core, transport/core (+ transporttest)
 14. transport/gin          depends on core, transport/core (+ transporttest)
 15. transport/fiber        depends on core, transport/core (+ transporttest)
+16. tasknotify             depends on core, notify (after notify moves out) (+ sqlkittest, storetest, store/sql, for tests)
 ```
 
 Core and `store/sql` land first and prove the shape; the rest follow. `make

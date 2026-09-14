@@ -315,6 +315,11 @@ guessable in practice. If you supply guessable identifiers through
 **Limit, stated:** the contract never serves a single-task read without an
 acting user, whatever the policy would say.
 
+### Telling people about their inbox
+
+An inbox answers when it is asked. To tell people when a task arrives, is taken
+from them or is assigned to them, see [Notifying people about their tasks](notifications.md).
+
 ### Unreleased breaking changes
 
 Nothing is tagged yet, so these land free:

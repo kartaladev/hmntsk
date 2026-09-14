@@ -114,6 +114,7 @@ func TestReleaseOrderCoversEveryModule(t *testing.T) {
 		"transport/core", "transport/http", "transport/gin", "transport/fiber",
 		"storetest", "transporttest", "relaytest",
 		"delivery/webhook", "delivery/redis", "delivery/nats",
+		"tasknotify",
 	}
 
 	for _, module := range modules {

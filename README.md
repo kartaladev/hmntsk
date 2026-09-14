@@ -65,6 +65,7 @@ pulls in no driver and no web framework.
 | `.../storetest` | The suite every store adapter must pass |
 | `.../transporttest` | The suite every transport binding must pass |
 | `.../relaytest` | The suite every relay must pass, on every dialect |
+| `.../tasknotify` | Turns task events into per-user notifications: offers, taken notices, assignments, closes |
 
 Drivers and dialects are orthogonal, and the matrix is sparse because pgx is
 PostgreSQL-only:
@@ -319,6 +320,7 @@ per-dialect workflow.
 ## Documentation
 
 - [docs/inbox.md](docs/inbox.md) — buckets, ordering, counts, team queues, metadata, query authorization
+- [docs/notifications.md](docs/notifications.md) — notifying people about their tasks: rules, closing statuses, links, failures
 - [docs/schema.md](docs/schema.md) — tables, prefix, migration workflow
 - [docs/releasing.md](docs/releasing.md) — module tagging scheme and release order
 - Runnable examples: `Example`, `Example_hostLedTransaction`, `Example_typedFacade`
