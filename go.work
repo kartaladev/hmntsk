@@ -5,6 +5,7 @@ use (
 	./delivery/nats
 	./delivery/redis
 	./delivery/webhook
+	./examples
 	./notify
 	./notify/nats
 	./notify/notifytest

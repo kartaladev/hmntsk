@@ -124,3 +124,24 @@ func TestReleaseOrderCoversEveryModule(t *testing.T) {
 
 	assert.Len(t, order, len(modules), "the release order must not name a module that is not there")
 }
+
+// TestExamplesAreBuiltButNeverReleased keeps the examples module in the
+// workspace, so every change builds and tests it, and out of the release, so
+// nobody ever requires documentation as a dependency.
+func TestExamplesAreBuiltButNeverReleased(t *testing.T) {
+	t.Parallel()
+
+	assert.Negative(t, indexOf(toolingReleaseOrder(t), "examples"),
+		"the examples module must never be tagged")
+
+	// Asking the go command, rather than reading go.work's bytes, survives
+	// `go work use` and reformatting.
+	inWorkspace := exec.CommandContext(t.Context(), "go", "list", "-m", "github.com/kartaladev/hmntsk/examples")
+	out, err := inWorkspace.CombinedOutput()
+	assert.NoError(t, err, "the examples module must be in the workspace: %s", out)
+
+	releasing, err := os.ReadFile("docs/releasing.md")
+	require.NoError(t, err)
+	assert.Contains(t, string(releasing), "`examples` is never tagged",
+		"docs/releasing.md must say the examples are never tagged")
+}

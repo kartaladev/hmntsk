@@ -9,6 +9,12 @@ every opinion has an override.
 This guide goes through them in the order a host usually meets them. Each part
 says what you get with no configuration, and how to change it.
 
+To see it running: [`examples/inbox-buckets`](../examples/inbox-buckets) covers
+buckets, orderings, counts and query authorization,
+[`examples/record-page`](../examples/record-page) covers reading a task, and
+[`examples/context-links`](../examples/context-links) covers metadata and links.
+[`examples/inbox-ui`](../examples/inbox-ui) puts them all behind a page.
+
 ## Buckets are queries
 
 There is no bucket type. A bucket is a `hmntsk.Query` you name, and the engine

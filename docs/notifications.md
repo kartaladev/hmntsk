@@ -10,6 +10,9 @@ which knows nothing about tasks: its model, retention, realtime signals and HTTP
 handlers are documented there. This guide covers only what `tasknotify` adds.
 
 Each part says what you get with no configuration, and how to change it.
+[`examples/notifications`](../examples/notifications) runs the wiring below
+end to end: the defaults, then custom links and titles, a supervisor's stream,
+retention and email.
 
 ## Wiring
 
