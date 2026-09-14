@@ -43,6 +43,7 @@ func TestTheDocumentedRetentionConstraintsMatchTheImplementation(t *testing.T) {
 		hmntskredis.WithMaxLen,
 		hmntskredis.WithMaxAge,
 		hmntskredis.WithTrimMode,
+		hmntskredis.WithExactTrim,
 		hmntskredis.WithClock,
 	} {
 		name := funcName(option)

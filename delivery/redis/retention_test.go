@@ -44,18 +44,36 @@ func (s *retentionSuite) SetupSuite() {
 		hmntskredis.WithTestServerConfig("stream-node-max-entries", "1"),
 	)
 
-	config, err := s.client.ConfigGet(s.T().Context(), "stream-node-max-entries").Result()
-	s.Require().NoError(err)
-	s.Require().Equal(map[string]string{"stream-node-max-entries": "1"}, config)
+	requireServerConfig(s.T(), s.client, map[string]string{"stream-node-max-entries": "1"})
 }
 
-// seed appends an entry with an explicit stream ID, standing in for an event
-// published earlier. It carries only the event identifier, which is all the
-// cases read back.
+// seed appends an entry with an explicit stream ID; see [seedEntry].
 func (s *retentionSuite) seed(ctx context.Context, stream, id, eventID string) {
 	s.T().Helper()
 
-	s.Require().NoError(s.client.XAdd(ctx, &goredis.XAddArgs{
+	seedEntry(s.T(), ctx, s.client, stream, id, eventID)
+}
+
+// requireServerConfig fails the test unless the broker reports every parameter
+// with the wanted value. A helper that silently dropped a setting would leave
+// every assertion depending on it asserting against the wrong broker.
+func requireServerConfig(t *testing.T, client *goredis.Client, want map[string]string) {
+	t.Helper()
+
+	for parameter, value := range want {
+		config, err := client.ConfigGet(t.Context(), parameter).Result()
+		require.NoError(t, err)
+		require.Equal(t, map[string]string{parameter: value}, config)
+	}
+}
+
+// seedEntry appends an entry with an explicit stream ID, standing in for an
+// event published earlier. It carries only the event identifier, which is all
+// the retention cases read back.
+func seedEntry(t *testing.T, ctx context.Context, client *goredis.Client, stream, id, eventID string) {
+	t.Helper()
+
+	require.NoError(t, client.XAdd(ctx, &goredis.XAddArgs{
 		Stream: stream,
 		ID:     id,
 		Values: []any{hmntskredis.FieldEventID, eventID},

@@ -54,6 +54,9 @@ type retention struct {
 	maxLen *int64
 	maxAge *time.Duration
 	mode   TrimMode
+	// exact trims to the bound itself rather than to the nearest whole stream
+	// node. See [WithExactTrim].
+	exact bool
 }
 
 // validate reports a contradictory or meaningless retention setting.
@@ -71,9 +74,14 @@ func (r retention) validate() error {
 		return &ConfigurationError{
 			Detail: "the stream can be bounded by length or by age, not both; choose WithMaxLen or WithMaxAge",
 		}
-	case r.mode != "" && r.maxLen == nil && r.maxAge == nil:
+	case (r.mode != "" || r.exact) && r.maxLen == nil && r.maxAge == nil:
+		option := "WithTrimMode"
+		if r.mode == "" {
+			option = "WithExactTrim"
+		}
+
 		return &ConfigurationError{
-			Detail: "a trim mode needs WithMaxLen or WithMaxAge; on its own it trims nothing",
+			Detail: option + " needs WithMaxLen or WithMaxAge; on its own it trims nothing",
 		}
 	case r.mode != "" && !r.mode.valid():
 		return &ConfigurationError{
@@ -84,8 +92,8 @@ func (r retention) validate() error {
 	}
 }
 
-// trim puts the bound on an XADD, so the publish trims in the same command, and
-// always approximately.
+// trim puts the bound on an XADD, so the publish trims in the same command:
+// approximately unless [WithExactTrim] asked for exact.
 //
 // An unset mode sends no mode keyword at all. That is load-bearing: a broker
 // older than Redis 8.2 rejects every mode, even the one that is 8.2's default,
@@ -102,7 +110,7 @@ func (r retention) trim(args *goredis.XAddArgs, clock hmntsk.Clock) {
 		return
 	}
 
-	args.Approx = true
+	args.Approx = !r.exact
 }
 
 // WithMaxLen bounds the stream to at least n entries, trimming the oldest
@@ -130,6 +138,22 @@ func WithMaxAge(age time.Duration) Option {
 // setting a mode.
 func WithTrimMode(mode TrimMode) Option {
 	return func(c *config) { c.retention.mode = mode }
+}
+
+// WithExactTrim trims the stream exactly to its bound instead of approximately:
+// after a publish, a [WithMaxLen] stream holds exactly n entries once n have
+// been published, and a [WithMaxAge] stream holds no entry older than the
+// cutoff. It requires [WithMaxLen] or [WithMaxAge], and combines with
+// [WithTrimMode].
+//
+// Approximate trimming is the default because it is cheaper. Exact trimming
+// makes the broker split a stream node on most publishes, which costs CPU on
+// every one, and the broker accepts no per-publish limit for it: set on a
+// stream already far above its bound, the first publish removes the whole
+// excess in one command and blocks the broker while it does. Trim such a
+// stream once by hand with XTRIM before enabling it. See docs/delivery.md.
+func WithExactTrim() Option {
+	return func(c *config) { c.retention.exact = true }
 }
 
 // WithClock supplies the sink's source of time, which is what the

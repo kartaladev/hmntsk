@@ -243,6 +243,18 @@ func runErrorCases(t *testing.T, mount Mount) {
 		assert.Equal(t, transportcore.CodeNotFound, result.Error(t).Code)
 	})
 
+	t.Run("a method the contract does not serve on a contract path is a JSON 404 with no Allow", func(t *testing.T) {
+		client, _ := NewClient(t, mount)
+
+		task := client.CreateApproval(t)
+
+		result := client.Do(t, http.MethodPatch, "/tasks/"+task.ID.String(), Alice, nil)
+		require.Equalf(t, transportcore.StatusNotFound, result.Status, "%s", result.Body)
+		assert.Contains(t, result.ContentType, "application/json")
+		assert.Equal(t, transportcore.CodeNotFound, result.Error(t).Code)
+		assert.Empty(t, result.Allow, "the contract answers 404 alike on every binding and never sends Allow")
+	})
+
 	t.Run("a refused operation changes nothing", func(t *testing.T) {
 		client, _ := NewClient(t, mount)
 

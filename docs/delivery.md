@@ -32,6 +32,15 @@ An event that exhausts its attempts, or that a sink rejects permanently, is
 count and its last error. Nothing prunes dead letters and nothing alerts on
 them; they are rows, and querying them is the interface.
 
+The last error is text for a person, not a format to parse. It holds one
+`<sink>: <message>` part per sink that refused the attempt, in the order the
+sinks are configured, joined with `; `, and a sink's message may itself contain
+that separator. Which sinks did take the event is the entry's `Accepted` list.
+A sink's typed error, the one to match with `errors.Is` or `errors.As`, exists
+only while the pass runs: supply `relay.WithRelayErrorHandler` to receive it.
+Failures are not stored per sink, so a process reading the row later cannot
+recover them; that is a known limit, recorded for a later change.
+
 ---
 
 # The webhook contract
@@ -277,20 +286,44 @@ sink, err := redis.New(client,
 
 The bound rides on the publish itself; there is no separate trim command and no
 job to schedule. Choose one: `New` refuses both at once, a non-positive bound,
-and a trim mode with no bound.
+and a trim mode or exact trimming with no bound.
 
-**Trimming is always approximate, and approximate means "at least".** Redis
-stores a stream in nodes of up to `stream-node-max-entries` entries (100 by
-default) and approximate trimming only removes whole nodes. The stream therefore
+**Trimming is approximate by default, and approximate means "at least".** Redis
+stores a stream in nodes, and a node closes at `stream-node-max-entries` entries
+(100 by default) or `stream-node-max-bytes` bytes (4096 by default), whichever
+comes first. Approximate trimming only removes whole nodes. The stream therefore
 never holds fewer entries than `WithMaxLen` allows, and may hold up to about one
-node more: a bound of 10 on a 251-entry stream keeps 51 at the default node
-size. Likewise `WithMaxAge` never removes an entry newer than the cutoff, and may
-leave some older ones until their node is wholly expired.
+node more: a bound of 10 on a 251-entry stream keeps 51 when nodes fill by entry
+count. Events large enough to fill a node's bytes after a few entries make nodes
+smaller and approximate trimming closer to exact, so how much extra a stream
+keeps depends on event size. Likewise `WithMaxAge` never removes an entry newer
+than the cutoff, and may leave some older ones until their node is wholly
+expired.
 
 **One publish trims at most 100 × `stream-node-max-entries` entries** — 10,000 at
 the default. On a new stream that never matters. Set a bound on an existing
 stream of fifty million entries, and it shrinks by that much per publish rather
 than on the first one.
+
+**`WithExactTrim` trims to the bound itself.** With it, a `WithMaxLen` stream
+holds exactly the bound once that many events are published, and a `WithMaxAge`
+stream holds no entry older than the cutoff:
+
+```go
+sink, err := redis.New(client,
+    redis.WithMaxLen(1_000),
+    redis.WithExactTrim(),                // XADD hmntsk.events MAXLEN 1000 * ...
+)
+```
+
+It is opt-in because it costs more on every publish. The broker has to split a
+stream node instead of dropping whole ones, which takes CPU on nearly every
+`XADD`. And exact trimming accepts no per-publish limit: on a stream already far
+above its bound, the first publish removes the entire excess in one command, and
+Redis serves nothing else until it finishes. Before enabling it on a large
+existing stream, trim that stream once by hand at a quiet moment, for example
+`XTRIM hmntsk.events MAXLEN ~ 1000` repeated until `XLEN` is near the bound. It
+combines with any trim mode, and `New` refuses it without a bound.
 
 **The age cutoff uses the sink's clock; entry IDs use the broker's.** Skew
 between the two shifts retention by the skew. `WithClock` supplies the clock the

@@ -9,6 +9,7 @@
 package fibertransport
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
@@ -64,22 +65,59 @@ func Mount(router fiber.Router, api *transportcore.API, opts ...Option) error {
 	return nil
 }
 
-// App returns an application serving only the contract, with an unmatched path
-// answered in the contract's own error shape rather than Fiber's.
+// App returns an application serving the contract, with an unmatched path or
+// method answered in the contract's own error shape rather than Fiber's.
+//
+// The host may add its own routes and middleware to the application afterwards,
+// and they are served: unmatched requests are answered by the application's
+// error handler, [NotFoundErrorHandler] over [fiber.DefaultErrorHandler], not by
+// a catch-all route that would sit in front of them. A host that needs its own
+// Fiber configuration or error handler builds the application itself and calls
+// [Mount].
 func App(api *transportcore.API, opts ...Option) (*fiber.App, error) {
-	app := fiber.New()
+	app := fiber.New(fiber.Config{ErrorHandler: NotFoundErrorHandler(fiber.DefaultErrorHandler)})
 
 	if err := Mount(app, api, opts...); err != nil {
 		return nil, err
 	}
 
-	app.Use(NotFoundHandler())
-
 	return app, nil
 }
 
+// NotFoundErrorHandler answers the router's not-found and method-not-allowed
+// errors in the contract's JSON 404, without the Allow header Fiber adds, and
+// passes every other error to next. A nil next is [fiber.DefaultErrorHandler].
+//
+// A host building its own application installs it as the application's
+// ErrorHandler, which keeps routes added after [Mount] reachable:
+//
+//	app := fiber.New(fiber.Config{ErrorHandler: fibertransport.NotFoundErrorHandler(mine)})
+//
+// It matches the errors, not where they came from: a host handler that itself
+// returns [fiber.ErrNotFound] or [fiber.ErrMethodNotAllowed] is answered with
+// the contract's 404 too. A host wanting its own 404 body writes that response
+// instead of returning the error.
+func NotFoundErrorHandler(next fiber.ErrorHandler) fiber.ErrorHandler {
+	if next == nil {
+		next = fiber.DefaultErrorHandler
+	}
+
+	return func(c fiber.Ctx, err error) error {
+		if !errors.Is(err, fiber.ErrNotFound) && !errors.Is(err, fiber.ErrMethodNotAllowed) {
+			return next(c, err)
+		}
+
+		// A wrong method is not-found in the contract, identically on every
+		// binding, and none of them advertises the methods a path does serve.
+		c.Response().Header.Del(fiber.HeaderAllow)
+
+		return write(c, transportcore.NotFoundResponse())
+	}
+}
+
 // NotFoundHandler answers a path the contract does not serve. A host mounting
-// the routes on its own app installs it last.
+// the routes on its own app may install it last with Use instead of
+// [NotFoundErrorHandler]; routes added after it are then unreachable.
 func NotFoundHandler() fiber.Handler {
 	return func(c fiber.Ctx) error { return write(c, transportcore.NotFoundResponse()) }
 }

@@ -57,6 +57,9 @@ type Result struct {
 	Body []byte
 	// ContentType is what the binding said the body was.
 	ContentType string
+	// Allow is every Allow header the binding sent, which for this contract is
+	// always none.
+	Allow []string
 
 	challenge string
 }
@@ -149,6 +152,7 @@ func (c *Client) Do(t *testing.T, method, path, actor string, body any) Result {
 		Status:      response.StatusCode,
 		Body:        responseBody,
 		ContentType: response.Header.Get("Content-Type"),
+		Allow:       response.Header.Values("Allow"),
 		challenge:   response.Header.Get("WWW-Authenticate"),
 	}
 }
@@ -177,6 +181,7 @@ func (c *Client) DoAbsolute(t *testing.T, method, path, actor string) Result {
 		Status:      response.StatusCode,
 		Body:        body,
 		ContentType: response.Header.Get("Content-Type"),
+		Allow:       response.Header.Values("Allow"),
 	}
 }
 

@@ -25,6 +25,18 @@ func TestBindingPassesTheSharedSuite(t *testing.T) {
 	transporttest.RunSuite(t, mount)
 }
 
+// TestAppPassesTheSharedSuite runs the shared suite against the application
+// [fibertransport.App] builds, rather than one the harness assembles with Mount.
+//
+// The two answer unknown routes by different means — App through the
+// application's error handler, the Mount harness through a trailing catch-all —
+// and a client must not be able to tell them apart either.
+func TestAppPassesTheSharedSuite(t *testing.T) {
+	t.Parallel()
+
+	transporttest.RunSuite(t, mountApp)
+}
+
 // TestRequestValuesOutliveTheirRequest guards against fasthttp's buffer reuse.
 //
 // Fiber hands out strings and byte slices that point into buffers fasthttp
@@ -68,6 +80,26 @@ func mount(t *testing.T, api *transportcore.API) transporttest.Binding {
 	require.NoError(t, fibertransport.Mount(app, api))
 
 	app.Use(fibertransport.NotFoundHandler())
+
+	return serve(t, app)
+}
+
+// mountApp serves the application App builds, reading the actor from the
+// suite's header through the binding's own actor rule.
+func mountApp(t *testing.T, api *transportcore.API) transporttest.Binding {
+	t.Helper()
+
+	app, err := fibertransport.App(api, fibertransport.WithActorFunc(func(c fiber.Ctx) string {
+		return c.Get(transporttest.ActorHeader)
+	}))
+	require.NoError(t, err)
+
+	return serve(t, app)
+}
+
+// serve starts an app on a real listener and returns where it is reachable.
+func serve(t *testing.T, app *fiber.App) transporttest.Binding {
+	t.Helper()
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)

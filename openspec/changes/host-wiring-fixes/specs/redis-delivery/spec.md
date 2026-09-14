@@ -21,7 +21,7 @@ The system SHALL allow the host to configure a maximum stream length. Each publi
 
 #### Scenario: Exact trimming holds exactly the bound
 
-- **WHEN** a length bound of 2 and exact trimming are configured, the broker keeps its default stream node size, and 10 events are published
+- **WHEN** a length bound of 2 and exact trimming are configured, the broker's stream nodes each hold many entries, and 10 events are published
 - **THEN** the stream holds exactly the 2 most recent entries
 
 #### Scenario: Exact trimming without a bound is refused
@@ -45,5 +45,5 @@ The system SHALL allow the host to configure a maximum entry age. Each publish S
 
 #### Scenario: Exact trimming removes every entry older than the cutoff
 
-- **WHEN** an age bound and exact trimming are configured, the broker keeps its default stream node size, and the stream holds a few entries older and newer than the cutoff
+- **WHEN** an age bound and exact trimming are configured, the broker's stream nodes each hold many entries, and the stream holds a few entries older and newer than the cutoff
 - **THEN** a publish leaves no entry older than the cutoff and keeps every newer one

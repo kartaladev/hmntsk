@@ -484,7 +484,10 @@ type fanResult struct {
 	permanent bool
 }
 
-// lastError renders the refusals as the row's last error.
+// lastError renders the refusals as the row's last error. The shape is
+// documented on [hmntsk.OutboxEntry.LastError] as text for a person, not a
+// contract: a host that needs a sink's typed error takes it from the error
+// handler while the pass runs.
 func (f fanResult) lastError() string { return strings.Join(f.failures, "; ") }
 
 // errUnclassified is what a sink that will not classify its own result is

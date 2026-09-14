@@ -131,6 +131,33 @@ func TestNew(t *testing.T) {
 			assert: rejected,
 		},
 		{
+			// Exact trimming with nothing to trim towards is meaningless, like a
+			// trim mode with no bound.
+			name:   "exact trim without a bound",
+			client: client,
+			opts:   []hmntskredis.Option{hmntskredis.WithExactTrim()},
+			assert: rejected,
+		},
+		{
+			name:   "length bound trimmed exactly",
+			client: client,
+			opts: []hmntskredis.Option{
+				hmntskredis.WithMaxLen(1000),
+				hmntskredis.WithExactTrim(),
+			},
+			assert: accepted,
+		},
+		{
+			name:   "age bound trimmed exactly under a trim mode",
+			client: client,
+			opts: []hmntskredis.Option{
+				hmntskredis.WithMaxAge(time.Hour),
+				hmntskredis.WithTrimMode(hmntskredis.TrimAcked),
+				hmntskredis.WithExactTrim(),
+			},
+			assert: accepted,
+		},
+		{
 			name:   "undefined trim mode in the wrong case",
 			client: client,
 			opts: []hmntskredis.Option{
