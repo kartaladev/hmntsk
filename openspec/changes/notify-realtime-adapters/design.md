@@ -204,6 +204,22 @@ func NewBroadcaster(conn *natsgo.Conn, opts ...Option) (*Broadcaster, error)
 - **Enabling it:** replace `notify.WithBroadcaster(notify.NewInProcessBroadcaster())` with the Redis or NATS broadcaster on every instance, and mount `websocket.NewHandler` where wanted.
 - **Rollback:** revert to the in-process broadcaster. Signals then reach only same-instance connections, and nothing is lost from the store.
 
+## Implementation notes
+
+Recorded while applying the change; none alters a requirement.
+
+- **coder/websocket** is v1.8.15, the version chosen; `govulncheck` reports nothing.
+- **`Listen` returns ctx's error**, not nil, on cancellation, in both broadcasters. That is the `notify.Broadcaster` contract as notify-core implemented it, and what `Hub.Run` passes on.
+- **NATS `Listen` uses a channel subscription** (`ChanSubscribe`) read by the `Listen` goroutine, not a callback on the connection's dispatcher. deliver then runs only on that goroutine, so nothing is delivered after `Listen` returns, and no subscription goroutine outlives it. A full channel still counts as a slow consumer, reported to the connection's async error handler.
+- **WebSocket error frames use the HTTP contract's codes as implemented**: `validation_failed`, `not_found`, `internal`. A not-found reply carries the fixed message `notify: not found`, so it cannot distinguish identifiers.
+- **Origin checking happens before `websocket.Accept`**, in the handler, so that a refusal carries the notify error body; the library's own check is switched off. A pattern matches the origin's host with `path.Match`.
+- **A failed write or ping closes the connection immediately** (`CloseNow`), rather than attempting a 1011 close frame the stalled client would not accept. Shutdown still closes with 1001.
+- **The connection's context is detached from the request's**, so that a server shutdown can still write the 1001 close frame; a read on a cancelled context would otherwise close the connection first.
+- **The Gin example is documented, not compiled**: adding Gin as a dependency of `notify/websocket` for one example is not worth it. The stdlib example is an example test.
+- **The NATS reconnect test drops the connection through an in-test TCP proxy** instead of restarting the container, whose mapped port changes on restart. The Redis test kills the pub/sub connection with `CLIENT KILL TYPE pubsub`.
+- **The NATS outage test disables the reconnect buffer** (`ReconnectBufSize(-1)`), so a publish while the server is away fails and reaches the signal error handler; with the default buffer it would wait in memory, which is also documented.
+- **The documentation tests live in each adapter module** and read `notify/docs/realtime-operations.md`, because `notify` cannot import its adapters.
+
 ## Open Questions
 
 None that change the specs or tasks. A sharded Redis pub/sub option is deferred until a host needs it.

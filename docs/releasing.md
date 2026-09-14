@@ -1,6 +1,6 @@
 # Releasing
 
-Twenty-three modules live in this repository. Fifteen make up hmntsk and are tagged
+Twenty-seven modules live in this repository. Sixteen make up hmntsk and are tagged
 and released from here, each independently. That is ongoing operational cost,
 accepted deliberately: it is what keeps `go get github.com/kartaladev/hmntsk`
 free of pgx, GORM, gin and Fiber, which is the entire point of the split.
@@ -13,8 +13,9 @@ consumer ever imports them under a path that later changes. `make split-check`
 keeps that move mechanical, by failing the build if anything under `sqlkit/`
 imports a module that stays behind.
 
-The last three are notify — `notify`, `notify/notifytest` and `notify/sqlstore`
-— the generic notification library. Like sqlkit, they are developed here, never
+The last six are notify — `notify`, `notify/notifytest`, `notify/sqlstore`,
+`notify/websocket`, `notify/redis` and `notify/nats` — the generic notification
+library and its realtime adapters. Like sqlkit, they are developed here, never
 tagged from here, and move to their own repository before their first release
 (step 0b below). `make split-check` fails the build if anything under `notify/`
 imports a module other than notify or sqlkit.

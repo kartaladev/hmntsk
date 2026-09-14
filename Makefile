@@ -8,7 +8,8 @@ HMNTSK_MODULES := . store/sqlcore store/sql store/pgx store/gorm \
 
 SQLKIT_MODULES := sqlkit sqlkit/sqlkittest sqlkit/stdsql sqlkit/pgx sqlkit/gorm
 
-NOTIFY_MODULES := notify notify/notifytest notify/sqlstore
+NOTIFY_MODULES := notify notify/notifytest notify/sqlstore \
+                  notify/websocket notify/redis notify/nats
 
 # GROUP narrows every per-module target to one group: all, hmntsk, sqlkit or
 # notify. `make test GROUP=sqlkit` runs only the sqlkit modules.
