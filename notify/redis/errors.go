@@ -3,14 +3,16 @@ package redis
 import (
 	"errors"
 	"fmt"
+
+	"github.com/kartaladev/hmntsk/notify"
 )
 
 // The broadcaster's error taxonomy: a sentinel a caller matches with
 // [errors.Is], and a concrete type carrying the detail. It mirrors
 // delivery/redis, copied rather than imported.
 var (
-	// ErrConfiguration reports a wiring mistake found by [NewBroadcaster],
-	// before a single signal is published.
+	// ErrConfiguration reports a wiring mistake found by [NewBroadcaster] or
+	// [Broadcaster.Listen], before a single signal is published or received.
 	ErrConfiguration = errors.New("redis: invalid configuration")
 
 	// ErrPublish reports that the broker did not take a message. The notify
@@ -30,8 +32,12 @@ func (e *ConfigurationError) Error() string {
 	return "redis: invalid configuration: " + e.Detail
 }
 
-// Unwrap makes the error match [ErrConfiguration].
-func (e *ConfigurationError) Unwrap() error { return ErrConfiguration }
+// Unwrap makes the error match [ErrConfiguration], and also
+// [notify.ErrConfiguration], because a broadcaster wired wrongly is a notify
+// wiring mistake too.
+func (e *ConfigurationError) Unwrap() []error {
+	return []error{ErrConfiguration, notify.ErrConfiguration}
+}
 
 // PublishError reports a message the broker did not take: a broker that could
 // not be reached, one that did not answer inside the publish timeout, and one

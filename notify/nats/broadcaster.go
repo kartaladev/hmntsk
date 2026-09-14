@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 	"unicode"
 
 	natsgo "github.com/nats-io/nats.go"
@@ -16,6 +17,10 @@ import (
 // it. It shares nothing with the subjects delivery/nats publishes durable
 // events under.
 const DefaultSubject = "notify.signals"
+
+// DefaultSubscribeTimeout bounds how long [Broadcaster.Listen] waits for the
+// server to confirm its subscription unless [WithSubscribeTimeout] replaces it.
+const DefaultSubscribeTimeout = 5 * time.Second
 
 // MaxSignalsPerMessage is the most signals one message carries. A broadcast of
 // more, such as escalating to a large group, is split into several messages, so
@@ -29,9 +34,10 @@ const MaxSignalsPerMessage = 500
 //
 // A Broadcaster is safe for concurrent use.
 type Broadcaster struct {
-	conn    *natsgo.Conn
-	subject string
-	onError func(ctx context.Context, err error)
+	conn             *natsgo.Conn
+	subject          string
+	subscribeTimeout time.Duration
+	onError          func(ctx context.Context, err error)
 }
 
 var _ notify.Broadcaster = (*Broadcaster)(nil)
@@ -39,10 +45,13 @@ var _ notify.Broadcaster = (*Broadcaster)(nil)
 // Option configures a [Broadcaster].
 type Option func(*config)
 
-// config is what the options set.
+// config is what the options set. The subscribe timeout is a pointer because an
+// explicit zero is a wiring mistake to report, while an absent value is the
+// default.
 type config struct {
-	subject string
-	onError func(ctx context.Context, err error)
+	subject          string
+	subscribeTimeout *time.Duration
+	onError          func(ctx context.Context, err error)
 }
 
 // WithSubject replaces [DefaultSubject]. Instances see each other's signals
@@ -51,6 +60,13 @@ type config struct {
 // cannot be published to it.
 func WithSubject(subject string) Option {
 	return func(c *config) { c.subject = subject }
+}
+
+// WithSubscribeTimeout replaces [DefaultSubscribeTimeout], how long
+// [Broadcaster.Listen] waits for the server to confirm its subscription. It must
+// be positive.
+func WithSubscribeTimeout(timeout time.Duration) Option {
+	return func(c *config) { c.subscribeTimeout = &timeout }
 }
 
 // WithDecodeErrorHandler receives messages on the subject that could not be
@@ -67,8 +83,10 @@ func WithDecodeErrorHandler(handler func(ctx context.Context, err error)) Option
 // owns, configures (reconnection, TLS, credentials, its async error handler for
 // slow consumers) and closes.
 //
-// With no options it publishes on [DefaultSubject]. A nil connection or an
-// invalid subject is a [ConfigurationError].
+// With no options it publishes on [DefaultSubject] and waits
+// [DefaultSubscribeTimeout] for a subscription to be confirmed. A nil
+// connection, an invalid subject or a subscribe timeout that is not positive is
+// a [ConfigurationError].
 func NewBroadcaster(conn *natsgo.Conn, opts ...Option) (*Broadcaster, error) {
 	cfg := config{subject: DefaultSubject}
 
@@ -86,7 +104,22 @@ func NewBroadcaster(conn *natsgo.Conn, opts ...Option) (*Broadcaster, error) {
 		return nil, err
 	}
 
-	b := &Broadcaster{conn: conn, subject: cfg.subject, onError: func(context.Context, error) {}}
+	if cfg.subscribeTimeout != nil && *cfg.subscribeTimeout <= 0 {
+		return nil, &ConfigurationError{
+			Detail: "the subscribe timeout must be positive; omit WithSubscribeTimeout to keep the default",
+		}
+	}
+
+	b := &Broadcaster{
+		conn:             conn,
+		subject:          cfg.subject,
+		subscribeTimeout: DefaultSubscribeTimeout,
+		onError:          func(context.Context, error) {},
+	}
+
+	if cfg.subscribeTimeout != nil {
+		b.subscribeTimeout = *cfg.subscribeTimeout
+	}
 
 	if cfg.onError != nil {
 		b.onError = cfg.onError
@@ -97,6 +130,10 @@ func NewBroadcaster(conn *natsgo.Conn, opts ...Option) (*Broadcaster, error) {
 
 // Subject is the subject the broadcaster publishes and listens on.
 func (b *Broadcaster) Subject() string { return b.subject }
+
+// SubscribeTimeout is how long Listen waits for the server to confirm its
+// subscription.
+func (b *Broadcaster) SubscribeTimeout() time.Duration { return b.subscribeTimeout }
 
 // Broadcast implements [notify.Broadcaster]. It publishes the signals in the
 // notify signal format, one message per [MaxSignalsPerMessage] signals.
@@ -128,18 +165,32 @@ func (b *Broadcaster) Broadcast(_ context.Context, signals []notify.Signal) erro
 const listenBuffer = 1000
 
 // Listen implements [notify.Broadcaster]. It subscribes to the subject, with no
-// queue group so that every instance receives every signal, and calls deliver
-// with every signal of every message until ctx is done, when it unsubscribes
-// and returns ctx's error.
+// queue group so that every instance receives every signal, waits for the
+// server to confirm the subscription, calls ready, and then calls deliver with
+// every signal of every message until ctx is done, when it unsubscribes and
+// returns ctx's error.
+//
+// A subscription registered on the connection is not yet known to the server,
+// and a signal published before the server knows it is not delivered. Listen
+// therefore confirms it with a round trip to the server, bounded by the
+// subscribe timeout ([DefaultSubscribeTimeout] unless [WithSubscribeTimeout]
+// replaces it). A subscription the server does not confirm in time, such as
+// while the connection is away, is returned as an error without calling ready;
+// the host decides whether to run Listen again. A ctx cancelled while waiting
+// returns ctx's error.
 //
 // deliver is called only from the goroutine running Listen, so nothing is
 // delivered after Listen returns. A message that cannot be read is reported to
 // the decode error handler and delivers nothing; receiving continues. After a
 // reconnect the connection resubscribes on its own, and signals published while
-// it was away are not replayed.
-func (b *Broadcaster) Listen(ctx context.Context, deliver func(notify.Signal)) error {
-	if deliver == nil {
+// it was away are not replayed. A nil deliver or ready is a
+// [ConfigurationError].
+func (b *Broadcaster) Listen(ctx context.Context, deliver func(notify.Signal), ready func()) error {
+	switch {
+	case deliver == nil:
 		return &ConfigurationError{Detail: "Listen needs a deliver function"}
+	case ready == nil:
+		return &ConfigurationError{Detail: "Listen needs a ready function"}
 	}
 
 	messages := make(chan *natsgo.Msg, listenBuffer)
@@ -149,6 +200,12 @@ func (b *Broadcaster) Listen(ctx context.Context, deliver func(notify.Signal)) e
 		return fmt.Errorf("nats: subscribe to subject %q: %w", b.subject, err)
 	}
 	defer func() { _ = sub.Unsubscribe() }()
+
+	if err := b.confirm(ctx); err != nil {
+		return err
+	}
+
+	ready()
 
 	for {
 		select {
@@ -167,6 +224,24 @@ func (b *Broadcaster) Listen(ctx context.Context, deliver func(notify.Signal)) e
 			}
 		}
 	}
+}
+
+// confirm waits, within the subscribe timeout, for the server to process
+// everything the connection has sent so far, the subscription included. A
+// cancelled ctx wins over the timeout and is returned as itself.
+func (b *Broadcaster) confirm(ctx context.Context) error {
+	flushCtx, cancel := context.WithTimeout(ctx, b.subscribeTimeout)
+	defer cancel()
+
+	if err := b.conn.FlushWithContext(flushCtx); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		return fmt.Errorf("nats: confirm subscription to subject %q: %w", b.subject, err)
+	}
+
+	return nil
 }
 
 // validateSubject applies the rules NATS applies to a publish subject, so that

@@ -18,8 +18,6 @@ func TestListenResumesAfterTheConnectionDrops(t *testing.T) {
 	client := redis.RunTestRedis(t)
 
 	l := listen(t, client, "test.reconnect")
-	l.awaitLive(t)
-
 	killed, err := client.Do(t.Context(), "CLIENT", "KILL", "TYPE", "pubsub").Int()
 	require.NoError(t, err)
 	require.Positive(t, killed, "the listener's subscription connection was killed")

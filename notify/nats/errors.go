@@ -3,6 +3,8 @@ package nats
 import (
 	"errors"
 	"fmt"
+
+	"github.com/kartaladev/hmntsk/notify"
 )
 
 // The broadcaster's error taxonomy: a sentinel a caller matches with
@@ -30,8 +32,12 @@ func (e *ConfigurationError) Error() string {
 	return "nats: invalid configuration: " + e.Detail
 }
 
-// Unwrap makes the error match [ErrConfiguration].
-func (e *ConfigurationError) Unwrap() error { return ErrConfiguration }
+// Unwrap makes the error match both [ErrConfiguration] and
+// [notify.ErrConfiguration]: the broadcaster is a [notify.Broadcaster], and a
+// mistake wiring it is a notify wiring mistake too.
+func (e *ConfigurationError) Unwrap() []error {
+	return []error{ErrConfiguration, notify.ErrConfiguration}
+}
 
 // PublishError reports a message the connection did not take: a closed
 // connection, and a reconnect buffer that overflowed while the server was away,

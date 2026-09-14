@@ -43,7 +43,7 @@ type Broadcaster interface {
 - call it from within `Listen`, after the subscription is confirmed by whatever the transport offers, and before `Listen` returns;
 - never call it after returning an error.
 
-A nil `deliver` or a nil `ready` is a `ConfigurationError`, returned before subscribing.
+A nil `deliver` or a nil `ready` is an error matching `notify.ErrConfiguration`, returned before subscribing. The in-process broadcaster returns `*notify.ConfigurationError`. The Redis and NATS adapters return their own `*ConfigurationError`, which now unwraps to both the adapter's `ErrConfiguration` and `notify.ErrConfiguration`, so existing `errors.Is`/`errors.As` checks on the adapter types keep matching.
 
 **Default:** the three shipped broadcasters implement it.
 
@@ -68,8 +68,8 @@ The hub goes through three run states, protected by its mutex:
 
 - **`Running()`** is true only in `receiving`. `Subscribe` refuses with `ErrUnavailable` in `idle` and `starting`, exactly as it does in `idle` today.
 - **A second `Run`** while `starting` or `receiving` is the existing `ConfigurationError`.
-- **Each run gets its own ready function,** guarded by a `sync.Once` and a run generation. A call after that run's `Listen` has returned is ignored, so a misbehaving broadcaster can't mark a finished run, or a later one, as receiving.
-- **`Hub.Ready() <-chan struct{}`** returns a channel that closes when the current run, or the next one if none is in progress, reaches `receiving`. The hub creates it in `NewHub`. When a run ends, the hub replaces it with a fresh open channel, so `Ready()` called after a run stops waits for the next run.
+- **Each run gets its own ready function,** bound to a token identifying that run. It does nothing unless its run is the current one and the hub isn't already receiving. A repeated call, or one after that run's `Listen` has returned, is therefore ignored, so a misbehaving broadcaster can't mark a finished run, or a later one, as receiving.
+- **`Hub.Ready() <-chan struct{}`** returns a channel that closes when the current run, or the next one if none is in progress, reaches `receiving`. The hub creates it in `NewHub`. When a run that reached `receiving` ends, the hub replaces the closed channel with a fresh open one, so `Ready()` called after a run stops waits for the next run. A run that fails before readiness leaves its channel open, so a host already waiting on it is woken by the next run that subscribes instead of waiting forever.
 - **Stated limit:** a receive from `Ready()` says the hub reached `receiving` at some point after the call. It does not say the hub is still receiving; `Running()` answers that.
 - **Stated limit:** when `Run` fails before readiness, `Ready()` never closes. The godoc shows the host pattern: `select` on `Ready()` and on the `Run` goroutine's error.
 
@@ -96,7 +96,7 @@ The hub goes through three run states, protected by its mutex:
 `notifytest.RunBroadcasterSuite(t, newPair func(t *testing.T) (publisher, listener notify.Broadcaster))` asserts:
 1. a nil `deliver` or a nil `ready` is refused with a `*notify.ConfigurationError`;
 2. `ready` is called exactly once before `Listen` returns;
-3. a signal broadcast on the publisher immediately after `ready` is delivered to the listener, with no sleep and no retry;
+3. a signal broadcast on the publisher from inside `ready`, before it returns, is delivered to the listener with no sleep and no retry. That makes "hold nothing `Broadcast` needs while calling `ready`" part of the contract;
 4. `Listen` returns the context's error after cancellation, and delivers nothing afterwards.
 
 For in-process, publisher and listener are the same value. For Redis and NATS they are two broadcasters on one broker, each with its own client, which the existing `testutils.go` helpers provide. Case 3 runs many iterations with fresh listeners, so a race shows up as a failure rather than a rare flake.

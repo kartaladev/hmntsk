@@ -25,6 +25,7 @@ func TestTheOperationsGuideMatchesTheBroadcaster(t *testing.T) {
 	for _, stated := range []string{
 		"| NATS subject | `" + nats.DefaultSubject + "` |",
 		"| Signals per message | " + strconv.Itoa(nats.MaxSignalsPerMessage) + " |",
+		"| NATS subscribe timeout | " + nats.DefaultSubscribeTimeout.String() + " |",
 		"no queue group",
 		"`delivery/nats`",
 	} {

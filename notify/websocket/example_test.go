@@ -15,7 +15,8 @@ func userFromContext(context.Context) string { return "alice" }
 
 // Mounting the endpoint on the standard library's router. The hub must be
 // running for connections to be accepted: a host runs hub.Run(ctx) in a
-// goroutine for the life of the process.
+// goroutine for the life of the process, and connections are accepted once
+// hub.Ready() is closed.
 //
 // On Gin, mount the same handler with gin.WrapH:
 //

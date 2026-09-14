@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	cws "github.com/coder/websocket"
 	"github.com/stretchr/testify/require"
@@ -70,7 +71,8 @@ func startServer(t *testing.T, cfg serverConfig) *server {
 	return &server{url: httpServer.URL, svc: svc, hub: hub}
 }
 
-// runHub runs a hub until the test ends, and waits for it to stop.
+// runHub runs a hub until the test ends, waits until it is ready, and waits for
+// it to stop at cleanup.
 func runHub(t *testing.T, hub *notify.Hub) {
 	t.Helper()
 
@@ -88,7 +90,13 @@ func runHub(t *testing.T, hub *notify.Hub) {
 		<-done
 	})
 
-	require.Eventually(t, hub.Running, testWait, testTick)
+	select {
+	case <-hub.Ready():
+	case <-done:
+		t.Fatal("the hub stopped before it was ready")
+	case <-time.After(testWait):
+		t.Fatal("the hub never became ready")
+	}
 }
 
 // dialRequest is who connects, for whom, and from which page.
