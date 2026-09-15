@@ -34,4 +34,4 @@ the apply phase re-runs their checks before ticking the remaining ones.
 - [x] 5.1 Update `examples/contextual-ui/README.md` and the `contextual-ui` row and test note in `examples/README.md`; verify both describe the approval, purchase order and invoice flow and the new API
 - [x] 5.2 Run `make lint` and `make ui-test` from the repository root; verify both pass with the pinned toolchain
 - [x] 5.3 Run `openspec validate contextual-ui-purchase-order-flow --strict`; verify it reports the change valid
-- [ ] 5.4 Commit the change on a feature branch and open a pull request; verify the `ci` workflow, including the generated-artefact diff and `examples ui` jobs, passes
+- [x] 5.4 Commit the change on a feature branch and open a pull request; verify the `ci` workflow, including the generated-artefact diff and `examples ui` jobs, passes
