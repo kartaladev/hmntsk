@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"slices"
-
-	"github.com/kartaladev/hmntsk/examples/internal/invoicing"
 )
 
 // userCookie holds the demo session: the ID of the signed-in demo user.
@@ -14,14 +12,6 @@ import (
 // for no password. It stands for the middleware a real host runs, which
 // establishes who the caller is before hmntsk is asked anything.
 const userCookie = "demo_user"
-
-// erin places orders. She is the demo's own user, not in the invoicing
-// directory, so she takes part in no invoice task and never approves her own
-// purchase.
-const (
-	erin            = "erin"
-	groupPurchasing = "purchasing"
-)
 
 // demoUser is one person the demo can be signed in as.
 type demoUser struct {
@@ -32,11 +22,13 @@ type demoUser struct {
 }
 
 // users are the demo's people, in the order the sign-in page lists them.
+// Their groups are the directory's, so the page and the engine agree on who
+// may do what.
 var users = []demoUser{
-	{ID: invoicing.Alice, Name: "Alice Hart", Role: "Finance approver", Groups: []string{invoicing.GroupApprovers}},
-	{ID: invoicing.Bob, Name: "Bob Nakamura", Role: "Finance approver", Groups: []string{invoicing.GroupApprovers}},
-	{ID: invoicing.Carol, Name: "Carol Diaz", Role: "Finance manager", Groups: []string{invoicing.GroupManagers}},
-	{ID: invoicing.Dave, Name: "Dave Okafor", Role: "Auditor", Groups: []string{invoicing.GroupAuditors}},
+	{ID: alice, Name: "Alice Hart", Role: "Finance approver", Groups: []string{groupApprovers}},
+	{ID: bob, Name: "Bob Nakamura", Role: "Finance approver", Groups: []string{groupApprovers}},
+	{ID: carol, Name: "Carol Diaz", Role: "Budget holder", Groups: []string{groupBudgetHolders, groupManagers}},
+	{ID: dave, Name: "Dave Okafor", Role: "Auditor", Groups: []string{groupAuditors}},
 	{ID: erin, Name: "Erin Walsh", Role: "Purchasing", Groups: []string{groupPurchasing}},
 }
 

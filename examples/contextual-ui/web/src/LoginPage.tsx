@@ -85,7 +85,8 @@ export function LoginPage({ onSignedIn }: Props) {
         </List>
 
         <Typography variant="body2" color="text.secondary" sx={{ mt: 2, textAlign: "center" }}>
-          Sign in as erin to place an order, then as alice or bob to review and approve its invoice.
+          Sign in as erin to place an order, as carol to approve it, as erin again to send or upload its purchase
+          order, then as alice or bob to review and approve the invoice that follows.
         </Typography>
       </Paper>
     </Box>

@@ -6,12 +6,12 @@ export type PageRoute =
   | { page: "login"; next?: string }
   | { page: "inbox" }
   | { page: "orders" }
-  | { page: "invoice"; invoiceId: string; activity?: string; taskId?: string }
+  | { page: "order"; orderId: string; activity?: string; taskId?: string }
   | { page: "notFound" };
 
-// matchPage names the page a location shows. An invoice page's path is the
-// task types' hmntsk.route, /invoices/{ownerRef}/{activityKey}?task={id}, and
-// works without the activity and task too.
+// matchPage names the page a location shows. An order page's path is the task
+// types' hmntsk.route, /orders/{ownerRef}/{activityKey}?task={id}, and works
+// without the activity and task too.
 export function matchPage(location: { pathname: string; search: string }): PageRoute {
   let segments: string[];
 
@@ -27,22 +27,24 @@ export function matchPage(location: { pathname: string; search: string }): PageR
   switch (segments[0]) {
     case undefined:
       return { page: "inbox" };
-    case "orders":
-      return segments.length === 1 ? { page: "orders" } : { page: "notFound" };
-    case "login": {
-      const next = query.get("next");
+    case "orders": {
+      const [, orderId, activity] = segments;
+      if (!orderId) {
+        return { page: "orders" };
+      }
 
-      return segments.length === 1 ? { page: "login", ...(next ? { next } : {}) } : { page: "notFound" };
-    }
-    case "invoices": {
-      const [, invoiceId, activity] = segments;
-      if (!invoiceId || segments.length > 3) {
+      if (segments.length > 3) {
         return { page: "notFound" };
       }
 
       const taskId = query.get("task");
 
-      return { page: "invoice", invoiceId, ...(activity ? { activity } : {}), ...(taskId ? { taskId } : {}) };
+      return { page: "order", orderId, ...(activity ? { activity } : {}), ...(taskId ? { taskId } : {}) };
+    }
+    case "login": {
+      const next = query.get("next");
+
+      return segments.length === 1 ? { page: "login", ...(next ? { next } : {}) } : { page: "notFound" };
     }
     default:
       return { page: "notFound" };
@@ -72,8 +74,8 @@ export function signInPath(from: string): string {
   return from === "/" ? "/login" : "/login?" + new URLSearchParams({ next: from }).toString();
 }
 
-export function invoicePath(invoiceId: string): string {
-  return "/invoices/" + encodeURIComponent(invoiceId);
+export function orderPath(orderId: string): string {
+  return "/orders/" + encodeURIComponent(orderId);
 }
 
 // navigate moves to a page without reloading. Every page reads the location

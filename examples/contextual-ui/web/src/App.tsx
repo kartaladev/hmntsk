@@ -16,9 +16,9 @@ import { useCallback, useEffect, useState } from "react";
 import { api, type DemoUser, type TaskType } from "./api";
 import { ColorModeToggle } from "./ColorModeToggle";
 import { InboxPage } from "./InboxPage";
-import { InvoicePage } from "./InvoicePage";
 import { LoginPage } from "./LoginPage";
 import { NotificationBell } from "./Notifications";
+import { OrderPage } from "./OrderPage";
 import { OrdersPage } from "./OrdersPage";
 import { afterSignIn, navigate, signInPath } from "./pages";
 import { UserMenu } from "./UserMenu";
@@ -108,10 +108,10 @@ export function App() {
       <Container maxWidth="xl" component="main" sx={{ py: 3 }}>
         {route.page === "inbox" && <InboxPage user={user} types={types} revision={revision} />}
         {route.page === "orders" && <OrdersPage user={user} />}
-        {route.page === "invoice" && (
-          <InvoicePage
-            key={route.invoiceId}
-            invoiceId={route.invoiceId}
+        {route.page === "order" && (
+          <OrderPage
+            key={route.orderId}
+            orderId={route.orderId}
             taskId={route.taskId}
             user={user}
             types={types}

@@ -47,23 +47,55 @@ export type Notification = {
 
 export type DemoUser = { id: string; name: string; role: string; groups: string[] };
 
-export type OrderStatus = "in-review" | "awaiting-approval" | "disputed" | "approved" | "rejected";
+// Supplier is an entry on the supplier registry: the application sends its
+// purchase orders to the contact itself.
+export type Supplier = { name: string; contact: string };
+
+export type OrderStatus =
+  | "pending-approval"
+  | "declined"
+  | "awaiting-purchase-order"
+  | "awaiting-invoice"
+  | "invoice-review"
+  | "invoice-approval"
+  | "disputed"
+  | "approved"
+  | "rejected";
 
 export type Order = {
   id: string;
-  invoiceId: string;
   supplier: string;
+  supplierRegistered: boolean;
   description: string;
   amount: number;
   requestedBy: string;
   status: OrderStatus;
+  // invoiceId is absent until the supplier's invoice arrives.
+  invoiceId?: string;
+  // invoiceExpectedAt is when it arrives, once the purchase order has gone.
+  invoiceExpectedAt?: string;
   createdAt: string;
 };
 
 export type NewOrder = Pick<Order, "supplier" | "description" | "amount">;
 
-// RecordTask is one task on an invoice, as the application's record page
-// reads it through the engine.
+export type Invoice = { id: string; orderId: string; supplier: string; amount: number; receivedAt: string };
+
+// OrderDocument is a purchase order, sent to a registered supplier or uploaded.
+export type OrderDocument = {
+  id: string;
+  orderId: string;
+  fileName: string;
+  contentType: string;
+  size: number;
+  method: "sent" | "uploaded";
+  sentTo?: string;
+  createdBy: string;
+  createdAt: string;
+};
+
+// RecordTask is one task on an order, as the application's record page reads
+// it through the engine.
 export type RecordTask = {
   id: string;
   type: string;
@@ -72,14 +104,21 @@ export type RecordTask = {
   terminal: boolean;
   assignee?: string;
   activityKey: string;
+  priority: number;
+  dueAt?: string;
   createdAt: string;
 };
 
-export type InvoiceRecord = {
-  invoice: { id: string; supplier: string; amount: number };
-  order: Order | null;
+export type OrderRecord = {
+  order: Order;
+  invoice: Invoice | null;
+  documents: OrderDocument[];
   tasks: RecordTask[];
 };
+
+// Issued is what issuing a purchase order answers: its document, and the task
+// the application completed with it.
+export type Issued = { document: OrderDocument; task: Task };
 
 export type Issue = { pointer?: string; detail: string };
 
@@ -103,10 +142,13 @@ export function isStale(error: unknown): boolean {
 }
 
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
+  // A form, such as an upload, sets its own multipart content type.
+  const form = body instanceof FormData;
+
   const response = await fetch(path, {
     method,
-    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    headers: body === undefined || form ? undefined : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : form ? body : JSON.stringify(body),
   });
 
   if (!response.ok) {
@@ -136,15 +178,33 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   return (await response.json()) as T;
 }
 
+const orderApi = (id: string) => "/demo/orders/" + encodeURIComponent(id);
+
+// documentPath downloads a purchase order document.
+export function documentPath(id: string): string {
+  return "/demo/documents/" + encodeURIComponent(id);
+}
+
 export const api = {
   users: () => call<DemoUser[]>("GET", "/demo/users"),
   session: () => call<DemoUser>("GET", "/demo/session"),
   signIn: (id: string) => call<DemoUser>("POST", "/demo/session", { user: id }),
   signOut: () => call<void>("DELETE", "/demo/session"),
 
+  suppliers: () => call<{ suppliers: Supplier[] }>("GET", "/demo/suppliers").then((r) => r.suppliers),
   orders: () => call<{ orders: Order[] | null }>("GET", "/demo/orders").then((r) => r.orders ?? []),
   placeOrder: (order: NewOrder) => call<Order>("POST", "/demo/orders", order),
-  invoice: (id: string) => call<InvoiceRecord>("GET", "/demo/invoices/" + encodeURIComponent(id)),
+  order: (id: string) => call<OrderRecord>("GET", orderApi(id)),
+  sendPurchaseOrder: (orderId: string, task: Pick<Task, "id" | "version">) =>
+    call<Issued>("POST", orderApi(orderId) + "/purchase-order/send", { taskId: task.id, version: task.version }),
+  uploadPurchaseOrder: (orderId: string, task: Pick<Task, "id" | "version">, file: File) => {
+    const form = new FormData();
+    form.set("taskId", task.id);
+    form.set("version", String(task.version));
+    form.set("file", file);
+
+    return call<Issued>("POST", orderApi(orderId) + "/purchase-order/upload", form);
+  },
 
   taskTypes: () => call<{ types: TaskType[] }>("GET", "/v1/task-types"),
   tasks: (query: string) => call<Page>("GET", "/v1/tasks?" + query),

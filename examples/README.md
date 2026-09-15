@@ -72,7 +72,7 @@ Most scenarios need nothing but Go. Three demonstrate a real server; see
 | Self-only inbox queries over HTTP, and a policy letting a supervisor read a team queue | [`inbox-buckets`](inbox-buckets) |
 | Every task for one record, participants-only single-task reads, an auditor read policy | [`record-page`](record-page) |
 | The same task contract and notification handlers served by Gin and by Fiber | [`http-frameworks`](http-frameworks) |
-| Tasks inside an application's own pages: sign-in, an order that starts an invoice review, an invoice page reached through `hmntsk.route` where review and approval are done through a schema form, a workflow step run by a relay sink after commit, inbox buckets with counts, a live notification badge | [`contextual-ui`](contextual-ui) |
+| Tasks inside an application's own pages: sign-in, an order approved, its purchase order sent or uploaded, and its invoice reviewed and approved, on an order page reached through `hmntsk.route`; schema forms and the application's own form chosen by `hmntsk.formKey`, workflow steps run by a relay sink after commit, data grids, inbox buckets with counts, a live notification badge | [`contextual-ui`](contextual-ui) |
 
 ### Events and delivery
 
@@ -145,7 +145,7 @@ library, and its schema form handles only flat forms.
 Changing the page needs Node 22.12 or newer. From the repository root:
 
 ```sh
-make ui-test     # page matching, workflow steps, route expansion, the form walker, bucket queries (Vitest)
+make ui-test     # page matching, workflow steps, cursor paging, uploads, route expansion, the form walker, bucket queries (Vitest)
 make ui-build    # typecheck and rebuild contextual-ui/dist; commit the result
 ```
 
