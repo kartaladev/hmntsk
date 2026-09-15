@@ -1,27 +1,22 @@
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableContainer from "@mui/material/TableContainer";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
+import { DataGrid, type GridColDef, type GridPaginationModel } from "@mui/x-data-grid";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { api, type DemoUser, type Task, type TaskType } from "./api";
 import { AppLink } from "./AppLink";
-import { bucketQuery, buckets as bucketsFor, taskListQuery } from "./buckets";
+import { bucketQuery, buckets as bucketsFor, pageSize, taskListQuery } from "./buckets";
 import { Due } from "./format";
 import { contextLink } from "./links";
-import { invoicePath, navigate } from "./pages";
+import { navigate, orderPath } from "./pages";
+import { cursorFor, rememberNext } from "./paging";
 import { StatusChip } from "./StatusChip";
 
 type Props = {
@@ -32,13 +27,19 @@ type Props = {
 };
 
 // InboxPage is the signed-in user's work across the application: buckets with
-// counts, and each task linked to the invoice page where it is done.
+// counts, and each bucket's tasks in a data grid, linked to the order page where
+// they are done.
 export function InboxPage({ user, types, revision }: Props) {
   const [bucketName, setBucketName] = useState("available");
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [nextCursor, setNextCursor] = useState<string>();
+  const [paging, setPaging] = useState<GridPaginationModel>({ page: 0, pageSize });
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
+
+  // cursors holds the cursor that starts each page reached so far: the grid
+  // pages by number, and the task API by cursor.
+  const cursors = useRef<(string | undefined)[]>([]);
 
   // A refresh rebuilds the buckets, so "overdue" is measured from now, and that
   // is what re-reads the counts and the list below.
@@ -59,59 +60,71 @@ export function InboxPage({ user, types, revision }: Props) {
     };
   }, [user.id, buckets]);
 
+  // Another bucket, or a refresh, starts again at the first page: the cursors
+  // were computed from a list that has since changed.
   useEffect(() => {
+    cursors.current = [];
+    setPaging((current) => (current.page === 0 ? current : { ...current, page: 0 }));
+  }, [user.id, bucket]);
+
+  useEffect(() => {
+    const cursor = cursorFor(cursors.current, paging.page);
+
+    // A page is only asked for once the page before it said where it starts.
+    if (cursor === null) {
+      return;
+    }
+
     let cancelled = false;
+    setLoading(true);
 
     api
-      .tasks(taskListQuery(bucket))
+      .tasks(taskListQuery(bucket, cursor))
       .then((page) => {
         if (!cancelled) {
+          cursors.current = rememberNext(cursors.current, paging.page, page.nextCursor);
           setTasks(page.tasks);
-          setNextCursor(page.nextCursor);
           setError(undefined);
         }
       })
-      .catch((e: Error) => !cancelled && setError(e.message));
+      .catch((e: Error) => !cancelled && setError(e.message))
+      .finally(() => !cancelled && setLoading(false));
 
     return () => {
       cancelled = true;
     };
-  }, [user.id, bucket]);
-
-  // shown is the bucket the list currently shows. A page that arrives after
-  // the viewer chose another bucket, or after a refresh rebuilt the buckets,
-  // belongs to a list that is gone, so it is dropped rather than appended.
-  const shown = useRef(bucket);
-
-  useEffect(() => {
-    shown.current = bucket;
-  }, [bucket]);
-
-  const loadMore = async () => {
-    if (!nextCursor) {
-      return;
-    }
-
-    const requested = bucket;
-
-    try {
-      const page = await api.tasks(taskListQuery(requested, nextCursor));
-
-      if (shown.current === requested) {
-        setTasks((current) => [...current, ...page.tasks]);
-        setNextCursor(page.nextCursor);
-      }
-    } catch (e) {
-      if (shown.current === requested) {
-        setError((e as Error).message);
-      }
-    }
-  };
+  }, [user.id, bucket, paging.page]);
 
   // A task opens where its work is done: the type's hmntsk.route, which is the
-  // invoice page.
-  const linkOf = (task: Task) =>
-    contextLink(task, types[task.type]) ?? invoicePath(task.correlation?.ownerRef ?? "");
+  // order page.
+  const linkOf = (task: Task) => contextLink(task, types[task.type]) ?? orderPath(task.correlation?.ownerRef ?? "");
+
+  const columns: GridColDef<Task>[] = [
+    {
+      field: "type",
+      headerName: "Task",
+      flex: 1,
+      minWidth: 180,
+      renderCell: ({ row }) => (
+        <AppLink href={linkOf(row)} underline="hover" onClick={(e) => e.stopPropagation()}>
+          {types[row.type]?.title ?? row.type}
+        </AppLink>
+      ),
+    },
+    { field: "order", headerName: "Order", width: 110, valueGetter: (_value, row) => row.correlation?.ownerRef },
+    {
+      field: "priority",
+      headerName: "Priority",
+      width: 90,
+      align: "center",
+      headerAlign: "center",
+      renderCell: ({ row }) => (
+        <Chip size="small" variant="outlined" label={`P${row.priority}`} color={row.priority <= 1 ? "error" : "default"} />
+      ),
+    },
+    { field: "dueAt", headerName: "Due", width: 140, renderCell: ({ row }) => <Due at={row.dueAt} /> },
+    { field: "status", headerName: "Status", width: 130, renderCell: ({ row }) => <StatusChip status={row.status} /> },
+  ];
 
   return (
     <Stack spacing={3}>
@@ -119,7 +132,7 @@ export function InboxPage({ user, types, revision }: Props) {
         <Typography variant="h5" component="h1" sx={{ fontWeight: 700 }}>
           Inbox
         </Typography>
-        <Typography color="text.secondary">Invoice work waiting for {user.name}, most urgent first.</Typography>
+        <Typography color="text.secondary">Purchasing work waiting for {user.name}, most urgent first.</Typography>
       </Box>
 
       {error && (
@@ -128,7 +141,7 @@ export function InboxPage({ user, types, revision }: Props) {
         </Alert>
       )}
 
-      <Box sx={{ display: "grid", gap: 3, gridTemplateColumns: { xs: "1fr", md: "240px 1fr" } }}>
+      <Box sx={{ display: "grid", gap: 3, gridTemplateColumns: { xs: "1fr", md: "240px minmax(0, 1fr)" } }}>
         <Paper component="nav" aria-label="Buckets" sx={{ p: 1, alignSelf: "start" }}>
           <List disablePadding>
             {buckets.map((b) => (
@@ -153,55 +166,29 @@ export function InboxPage({ user, types, revision }: Props) {
           <Typography variant="subtitle1" component="h2" sx={{ fontWeight: 700, px: 2, py: 1.5 }}>
             {bucket.label}
           </Typography>
-          <TableContainer>
-            <Table size="small" aria-label={bucket.label}>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Task</TableCell>
-                  <TableCell>Invoice</TableCell>
-                  <TableCell align="center">Priority</TableCell>
-                  <TableCell>Due</TableCell>
-                  <TableCell>Status</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {tasks.map((task) => (
-                  <TableRow key={task.id} hover onClick={() => navigate(linkOf(task))} sx={{ cursor: "pointer" }}>
-                    <TableCell>
-                      <AppLink href={linkOf(task)} underline="hover" onClick={(e) => e.stopPropagation()}>
-                        {types[task.type]?.title ?? task.type}
-                      </AppLink>
-                    </TableCell>
-                    <TableCell>{task.correlation?.ownerRef}</TableCell>
-                    <TableCell align="center">
-                      <Chip
-                        size="small"
-                        variant="outlined"
-                        label={`P${task.priority}`}
-                        color={task.priority <= 1 ? "error" : "default"}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Due at={task.dueAt} />
-                    </TableCell>
-                    <TableCell>
-                      <StatusChip status={task.status} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-          {tasks.length === 0 && (
-            <Typography color="text.secondary" sx={{ p: 4, textAlign: "center" }}>
-              Nothing in this bucket.
-            </Typography>
-          )}
-          {nextCursor && (
-            <Box sx={{ p: 2, textAlign: "center" }}>
-              <Button onClick={() => void loadMore()}>Load more</Button>
-            </Box>
-          )}
+          <DataGrid
+            aria-label={bucket.label}
+            rows={tasks}
+            columns={columns}
+            loading={loading}
+            // The task API pages by cursor and knows each bucket's count, so
+            // the grid shows one server page at a time.
+            paginationMode="server"
+            rowCount={counts[bucket.name] ?? -1}
+            paginationMeta={{ hasNextPage: cursorFor(cursors.current, paging.page + 1) !== null }}
+            paginationModel={paging}
+            onPaginationModelChange={setPaging}
+            pageSizeOptions={[pageSize]}
+            // The server orders every page by urgency. Sorting or filtering a
+            // single page in the browser would reorder that page alone, which
+            // misleads, so the grid offers neither.
+            disableColumnSorting
+            disableColumnFilter
+            disableColumnMenu
+            onRowClick={({ row }) => navigate(linkOf(row))}
+            localeText={{ noRowsLabel: "Nothing in this bucket." }}
+            sx={{ "& .MuiDataGrid-row": { cursor: "pointer" } }}
+          />
         </Paper>
       </Box>
     </Stack>

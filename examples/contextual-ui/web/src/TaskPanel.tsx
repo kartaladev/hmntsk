@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { ApiError, api, isStale, type Issue, type Task, type TaskType } from "./api";
 import { Due } from "./format";
+import { isPurchaseOrderForm, PurchaseOrderForm } from "./PurchaseOrderForm";
 import { fieldsFromSchema, outputFromValues, withBooleanDefaults, type Field } from "./schemaForm";
 import { StatusChip } from "./StatusChip";
 
@@ -23,9 +24,10 @@ type Props = {
   onChange: () => void;
 };
 
-// TaskPanel is where the work is done, inside the invoice page: the lifecycle
-// actions the current user may take, and a form rendered from the task type's
-// output schema.
+// TaskPanel is where the work is done, inside the order page: the lifecycle
+// actions the current user may take, and the form the task type's
+// hmntsk.formKey names. A purchase order form is the application's own; any
+// other is rendered from the type's output schema.
 export function TaskPanel({ id, user, types, onChange }: Props) {
   const [task, setTask] = useState<Task>();
   const [problem, setProblem] = useState<string>();
@@ -88,6 +90,29 @@ export function TaskPanel({ id, user, types, onChange }: Props) {
   }
 
   const mine = task.assignee === user;
+  const formKey = type?.metadata?.["hmntsk.formKey"];
+
+  const recover = async (e: unknown) => {
+    if (isStale(e)) {
+      // Someone else acted on the task, or it moved on its own: show it as it
+      // is now, keeping whatever the form holds.
+      try {
+        setTask(await api.task(task.id));
+        setProblem("This task changed while you had it open. It now shows the latest; try again if you still can.");
+      } catch (reread) {
+        setProblem((reread as Error).message);
+      }
+
+      onChange();
+    } else if (e instanceof ApiError) {
+      setIssues(e.issues);
+      if (e.issues.length === 0) {
+        setProblem(`${e.code}: ${e.message}`);
+      }
+    } else {
+      setProblem((e as Error).message);
+    }
+  };
 
   const act = async (operation: string, body?: Record<string, unknown>) => {
     setIssues([]);
@@ -99,23 +124,7 @@ export function TaskPanel({ id, user, types, onChange }: Props) {
       setTask(updated);
       onChange();
     } catch (e) {
-      if (isStale(e)) {
-        // Someone else acted on the task, or it moved on its own: show it as it
-        // is now, keeping whatever the form holds.
-        try {
-          setTask(await api.task(task.id));
-          setProblem("This task changed while you had it open. It now shows the latest; try again if you still can.");
-        } catch (reread) {
-          setProblem((reread as Error).message);
-        }
-
-        onChange();
-      } else if (e instanceof ApiError) {
-        setIssues(e.issues);
-        if (e.issues.length === 0) {
-          setProblem(`${e.code}: ${e.message}`);
-        }
-      }
+      await recover(e);
     } finally {
       setBusy(false);
     }
@@ -195,7 +204,25 @@ export function TaskPanel({ id, user, types, onChange }: Props) {
           </Typography>
         )}
 
-        {task.status === "IN_PROGRESS" && mine && (
+        {task.status === "IN_PROGRESS" && mine && isPurchaseOrderForm(formKey) && (
+          <PurchaseOrderForm
+            task={task}
+            form={formKey}
+            onIssued={(issued) => {
+              setProblem(undefined);
+              setTask(issued.task);
+              onChange();
+            }}
+            onError={(e) => {
+              setIssues([]);
+              setProblem(undefined);
+
+              return recover(e);
+            }}
+          />
+        )}
+
+        {task.status === "IN_PROGRESS" && mine && !isPurchaseOrderForm(formKey) && (
           <Box
             component="form"
             noValidate
@@ -242,7 +269,7 @@ export function TaskPanel({ id, user, types, onChange }: Props) {
         {task.output && (
           <Box>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
-              Decision recorded
+              Output recorded
             </Typography>
             <Box
               component="pre"

@@ -5,74 +5,93 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/kartaladev/hmntsk"
-	"github.com/kartaladev/hmntsk/examples/internal/invoicing"
 	"github.com/kartaladev/hmntsk/relay"
 )
 
-// workflowSink moves an order along as its invoice's tasks complete: a review
-// that matches the order asks for approval, one that does not disputes the
-// order, and an approval decides it.
+// workflowSink moves an order along as its tasks complete:
+//
+//   - an approved order asks purchasing for its purchase order, sent to a
+//     supplier on the registry or uploaded for anyone else, and a declined one
+//     goes no further;
+//   - an issued purchase order starts waiting for the supplier's invoice, whose
+//     arrival [server.receiveDueInvoices] stands in for;
+//   - a review that matches the order asks for the invoice's approval, and one
+//     that does not disputes the order;
+//   - the invoice's approval decides the order.
 //
 // It is a relay sink, run by the same relay as the notification projector, so
 // it acts only on completions that were committed. The relay delivers at least
-// once, so every step is safe to repeat: the approval task's ID is derived
-// from its invoice, and an order only moves forward from the status the step
-// expects.
+// once, so every step is safe to repeat: every task it creates has an ID
+// derived from its order, and an order only moves forward from the status the
+// step expects.
 type workflowSink struct {
-	engine   *hmntsk.Service
-	invoices *invoicing.SQLRepository
-	orders   *orderStore
+	engine       *hmntsk.Service
+	records      *store
+	invoiceDelay func() time.Duration
 }
 
 var _ relay.Sink = (*workflowSink)(nil)
 
 // Name is stable: the relay records per-sink acceptance under it.
-func (*workflowSink) Name() string { return "invoice-workflow" }
+func (*workflowSink) Name() string { return "order-workflow" }
 
 func (k *workflowSink) Deliver(ctx context.Context, attempt relay.Attempt) relay.Outcome {
 	event := attempt.Event
-	if event.Type != hmntsk.EventTypeCompleted || event.Correlation.OwnerType != invoicing.OwnerType {
+	if event.Type != hmntsk.EventTypeCompleted || event.Correlation.OwnerType != ownerType {
 		return relay.Delivered()
 	}
 
-	invoiceID := event.Correlation.OwnerRef
+	orderID := event.Correlation.OwnerRef
 
 	switch event.TaskType {
-	case invoicing.ReviewType:
-		var review struct {
-			MatchesOrder bool `json:"matchesOrder"`
+	case approveOrderType:
+		var decision struct {
+			Approved bool `json:"approved"`
 		}
 
 		// The engine validated the output against the type's schema, so an
 		// unreadable one will not become readable on a later attempt.
+		if err := json.Unmarshal(event.Output, &decision); err != nil {
+			return relay.Permanent(fmt.Errorf("read approval of %s: %w", orderID, err))
+		}
+
+		if !decision.Approved {
+			return k.advance(ctx, orderID, orderPendingApproval, orderDeclined)
+		}
+
+		return k.advanceAndRequest(ctx, orderID, orderPendingApproval, orderAwaitingPurchaseOrder, purchaseOrderType)
+
+	case sendOrderType, uploadOrderType:
+		_, err := k.records.AwaitInvoice(ctx, orderID, k.engine.Clock().Now().UTC().Add(k.invoiceDelay()))
+
+		return outcome(err)
+
+	case reviewInvoiceType:
+		var review struct {
+			MatchesOrder bool `json:"matchesOrder"`
+		}
+
 		if err := json.Unmarshal(event.Output, &review); err != nil {
-			return relay.Permanent(fmt.Errorf("read review of %s: %w", invoiceID, err))
+			return relay.Permanent(fmt.Errorf("read review of %s: %w", orderID, err))
 		}
 
 		if !review.MatchesOrder {
-			return outcome(k.orders.Advance(ctx, invoiceID, orderInReview, orderDisputed))
+			return k.advance(ctx, orderID, orderInvoiceReview, orderDisputed)
 		}
 
-		// The order moves before the approval exists. Created first, an
-		// approval could be completed while a failed order update waited for
-		// its retry, and its decision would find no order awaiting it. This
-		// way a retry finds the order already moved, which changes nothing,
-		// and only creates the approval.
-		if err := k.orders.Advance(ctx, invoiceID, orderInReview, orderAwaitingApproval); err != nil {
-			return relay.Retryable(err)
-		}
+		return k.advanceAndRequest(ctx, orderID, orderInvoiceReview, orderInvoiceApproval,
+			func(order) string { return approveInvoiceType })
 
-		return outcome(k.requestApproval(ctx, invoiceID))
-
-	case invoicing.ApproveType:
+	case approveInvoiceType:
 		var decision struct {
 			Approved bool `json:"approved"`
 		}
 
 		if err := json.Unmarshal(event.Output, &decision); err != nil {
-			return relay.Permanent(fmt.Errorf("read approval of %s: %w", invoiceID, err))
+			return relay.Permanent(fmt.Errorf("read invoice approval of %s: %w", orderID, err))
 		}
 
 		status := orderRejected
@@ -80,31 +99,60 @@ func (k *workflowSink) Deliver(ctx context.Context, attempt relay.Attempt) relay
 			status = orderApproved
 		}
 
-		return outcome(k.orders.Advance(ctx, invoiceID, orderAwaitingApproval, status))
+		return k.advance(ctx, orderID, orderInvoiceApproval, status)
 	}
 
 	return relay.Delivered()
 }
 
-// requestApproval creates the invoice's approval task. Its ID is derived from
-// the invoice, which is what makes the create idempotent: when the task
-// already exists the engine answers a conflict, and that means the work is
-// done, however many deliveries or relays asked.
-func (k *workflowSink) requestApproval(ctx context.Context, invoiceID string) error {
-	invoice, err := k.invoices.Get(ctx, invoiceID)
-	if err != nil {
-		return err
+func (k *workflowSink) advance(ctx context.Context, orderID, from, to string) relay.Outcome {
+	_, err := k.records.AdvanceOrder(ctx, orderID, from, to)
+
+	return outcome(err)
+}
+
+// advanceAndRequest moves the order, then creates the task its next status
+// waits on.
+//
+// The order moves before the task exists. Created first, the task could be
+// completed while a failed order update waited for its retry, and its
+// completion would find no order waiting on it. This way a retry finds the
+// order already moved, which changes nothing, and only creates the task.
+func (k *workflowSink) advanceAndRequest(
+	ctx context.Context, orderID, from, to string, taskTypeOf func(order) string,
+) relay.Outcome {
+	if _, err := k.records.AdvanceOrder(ctx, orderID, from, to); err != nil {
+		return relay.Retryable(err)
 	}
 
-	_, err = k.engine.Create(ctx, hmntsk.CreateRequest{
-		ID:          hmntsk.TaskID("approval-" + invoiceID),
-		Type:        invoicing.ApproveType,
-		Actor:       billingService,
-		Input:       invoicing.Input(invoice),
-		Correlation: invoicing.Correlation(invoiceID, invoicing.ActivityApprove),
+	record, err := k.records.Order(ctx, orderID)
+	if errors.Is(err, errRecordNotFound) {
+		return relay.Permanent(err)
+	}
+
+	if err != nil {
+		return relay.Retryable(err)
+	}
+
+	return outcome(k.request(ctx, record, taskTypeOf(record)))
+}
+
+// request creates the order's task of taskType. Its ID is derived from the
+// order, which is what makes the create idempotent: when the task already
+// exists the engine answers a conflict, and that means the work is done,
+// however many deliveries or relays asked.
+func (k *workflowSink) request(ctx context.Context, record order, taskType string) error {
+	activity := activityOf(taskType)
+
+	_, err := k.engine.Create(ctx, hmntsk.CreateRequest{
+		ID:          taskID(activity, record.ID),
+		Type:        taskType,
+		Actor:       systemActor,
+		Input:       taskInput(record),
+		Correlation: correlation(record.ID, activity),
 	})
 	if err != nil && !errors.Is(err, hmntsk.ErrConflict) {
-		return fmt.Errorf("create approval of %s: %w", invoiceID, err)
+		return fmt.Errorf("create %s for %s: %w", taskType, record.ID, err)
 	}
 
 	return nil

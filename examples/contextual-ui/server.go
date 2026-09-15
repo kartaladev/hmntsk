@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"math/rand/v2"
 	"net/http"
 	"path"
 	"path/filepath"
@@ -17,7 +18,6 @@ import (
 
 	"github.com/kartaladev/hmntsk"
 	"github.com/kartaladev/hmntsk/examples/internal/demo"
-	"github.com/kartaladev/hmntsk/examples/internal/invoicing"
 	"github.com/kartaladev/hmntsk/notify"
 	notifysql "github.com/kartaladev/hmntsk/notify/sqlstore"
 	"github.com/kartaladev/hmntsk/relay"
@@ -41,20 +41,30 @@ type config struct {
 	DataDir string
 	// Clock is the engine's and the notifier's clock; nil is the system clock.
 	Clock hmntsk.Clock
+	// InvoiceDelay is how long a supplier takes to send its invoice once it has
+	// the purchase order; nil is a random 5 to 20 seconds.
+	InvoiceDelay func() time.Duration
 }
 
-// server is the demo's back end: the task engine, the orders and invoices, and
+// randomInvoiceDelay keeps the demo's suppliers quick, and unpredictable
+// enough that invoices arrive while the viewer is doing something else.
+func randomInvoiceDelay() time.Duration {
+	return 5*time.Second + rand.N(15*time.Second)
+}
+
+// server is the demo's back end: the task engine, the purchasing records, and
 // notifications on one SQLite database, and the HTTP contracts a browser
 // client consumes.
 type server struct {
-	db       *sql.DB
-	engine   *hmntsk.Service
-	notifier *notify.Service
-	hub      *notify.Hub
-	relay    *relay.Relay
-	invoices *invoicing.SQLRepository
-	orders   *orderStore
-	handler  http.Handler
+	db           *sql.DB
+	engine       *hmntsk.Service
+	notifier     *notify.Service
+	hub          *notify.Hub
+	relay        *relay.Relay
+	records      *store
+	workflow     *workflowSink
+	invoiceDelay func() time.Duration
+	handler      http.Handler
 
 	mu         sync.Mutex
 	nextNumber int
@@ -62,7 +72,10 @@ type server struct {
 }
 
 func newServer(ctx context.Context, cfg config) (_ *server, err error) {
-	s := &server{nextNumber: 201}
+	s := &server{nextNumber: 201, invoiceDelay: cfg.InvoiceDelay}
+	if s.invoiceDelay == nil {
+		s.invoiceDelay = randomInvoiceDelay
+	}
 
 	defer func() {
 		if err != nil {
@@ -90,7 +103,7 @@ func newServer(ctx context.Context, cfg config) (_ *server, err error) {
 }
 
 func (s *server) openStores(ctx context.Context, cfg config) error {
-	db, err := invoicing.OpenSQLite(filepath.Join(cfg.DataDir, "contextual.db"))
+	db, err := openSQLite(filepath.Join(cfg.DataDir, "contextual.db"))
 	if err != nil {
 		return err
 	}
@@ -98,21 +111,16 @@ func (s *server) openStores(ctx context.Context, cfg config) error {
 	s.db = db
 	s.closers = append(s.closers, func() { _ = db.Close() })
 
-	// The engine's tables, the host's orders and invoices, and the
-	// notifications share one database. A host applies each schema through its
-	// own migrations.
+	// The engine's tables, the host's purchasing records and the notifications
+	// share one database. A host applies each schema through its own
+	// migrations.
 	taskStore := sqlstore.New(db, sqlcore.SQLite)
 	if err := taskStore.Migrate(ctx); err != nil {
 		return fmt.Errorf("migrate tasks: %w", err)
 	}
 
-	s.invoices = invoicing.NewSQLRepository(db)
-	if err := s.invoices.Migrate(ctx); err != nil {
-		return err
-	}
-
-	s.orders = &orderStore{db: db}
-	if err := s.orders.Migrate(ctx); err != nil {
+	s.records = &store{db: db}
+	if err := s.records.Migrate(ctx); err != nil {
 		return err
 	}
 
@@ -130,7 +138,7 @@ func (s *server) openStores(ctx context.Context, cfg config) error {
 		return fmt.Errorf("migrate notifications: %w", err)
 	}
 
-	engineOpts := []hmntsk.Option{hmntsk.WithGroupResolver(invoicing.Directory())}
+	engineOpts := []hmntsk.Option{hmntsk.WithGroupResolver(directory())}
 	notifyOpts := []notify.Option{}
 
 	if cfg.Clock != nil {
@@ -142,7 +150,7 @@ func (s *server) openStores(ctx context.Context, cfg config) error {
 		return fmt.Errorf("new engine: %w", err)
 	}
 
-	if err := invoicing.Register(s.engine); err != nil {
+	if err := registerTypes(s.engine); err != nil {
 		return err
 	}
 
@@ -150,18 +158,18 @@ func (s *server) openStores(ctx context.Context, cfg config) error {
 		return fmt.Errorf("new notifier: %w", err)
 	}
 
-	// Default rules, links and titles: the context link is the invoice type's
-	// hmntsk.route, which is the invoice page.
+	// Default rules, links and titles: the context link is the types'
+	// hmntsk.route, which is the order page.
 	projector, err := tasknotify.New(s.engine, s.notifier)
 	if err != nil {
 		return fmt.Errorf("new projector: %w", err)
 	}
 
-	workflow := &workflowSink{engine: s.engine, invoices: s.invoices, orders: s.orders}
+	s.workflow = &workflowSink{engine: s.engine, records: s.records, invoiceDelay: s.invoiceDelay}
 
 	// Each sink accepts every event independently: a workflow step that must be
 	// retried never holds back a notification, nor the other way round.
-	if s.relay, err = relay.NewRelay(s.engine, relay.WithSinks(projector, workflow)); err != nil {
+	if s.relay, err = relay.NewRelay(s.engine, relay.WithSinks(projector, s.workflow)); err != nil {
 		return fmt.Errorf("new relay: %w", err)
 	}
 
@@ -188,12 +196,34 @@ func (s *server) startHub(ctx context.Context) error {
 	return nil
 }
 
-// start runs the relay until the returned stop is called, so notifications and
-// workflow steps follow task changes within a second.
+// start runs the relay and the demo's suppliers until the returned stop is
+// called, so notifications and workflow steps follow task changes, and
+// invoices arrive, within a second.
 func (s *server) start(ctx context.Context) (stop func()) {
-	return demo.Background(ctx, func(ctx context.Context) error {
+	stopRelay := demo.Background(ctx, func(ctx context.Context) error {
 		return s.relay.Run(ctx, time.Second)
 	})
+
+	stopSuppliers := demo.Background(ctx, func(ctx context.Context) error {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-ticker.C:
+				// A failed pass leaves the invoices due, so the next one tries
+				// them again.
+				_, _ = s.receiveDueInvoices(ctx)
+			}
+		}
+	})
+
+	return func() {
+		stopSuppliers()
+		stopRelay()
+	}
 }
 
 // Handler is everything the page talks to.
@@ -208,8 +238,8 @@ func (s *server) Close() {
 	s.closers = nil
 }
 
-// seed creates an application worth looking at: seven orders erin placed,
-// whose invoices wait at approval or review at different priorities and
+// seed creates an application worth looking at: eight orders erin placed, at
+// every stage from approval to the invoice's, at different priorities and
 // deadlines, one of them already claimed by alice.
 func (s *server) seed(ctx context.Context) error {
 	now := s.engine.Clock().Now()
@@ -218,18 +248,19 @@ func (s *server) seed(ctx context.Context) error {
 		supplier    string
 		description string
 		amount      int64
-		taskType    string
+		stage       string
 		priority    hmntsk.Priority
 		due         time.Duration
 		claimBy     string
 	}{
-		{"Acme Paper", "Printer paper for the finance floor", 1299, invoicing.ApproveType, 0, 4 * time.Hour, ""},
-		{"Globex Cloud", "Annual cloud hosting renewal", 18400, invoicing.ApproveType, 1, 26 * time.Hour, ""},
-		{"Initech Chairs", "Ergonomic chairs for the support team", 3150, invoicing.ApproveType, 3, 72 * time.Hour, ""},
-		{"Umbrella Catering", "Catering for the quarterly review", 640, invoicing.ApproveType, 5, 7 * 24 * time.Hour, ""},
-		{"Hooli Travel", "Flights to the partner summit", 2275, invoicing.ApproveType, 2, 2 * time.Hour, ""},
-		{"Vandelay Imports", "Warehouse shelving", 9900, invoicing.ApproveType, 1, 30 * time.Hour, invoicing.Alice},
-		{"Acme Paper", "Envelopes and letterheads", 410, invoicing.ReviewType, 4, 48 * time.Hour, ""},
+		{"Acme Paper", "Printer paper for the finance floor", 1299, orderPendingApproval, 2, 20 * time.Hour, ""},
+		{"Stark Industries", "Laptops for the new starters", 4200, orderPendingApproval, 1, 3 * time.Hour, ""},
+		{"Globex Cloud", "Annual cloud hosting renewal", 18400, orderAwaitingPurchaseOrder, 1, 6 * time.Hour, ""},
+		{"Vandelay Imports", "Warehouse shelving", 9900, orderAwaitingPurchaseOrder, 3, 40 * time.Hour, ""},
+		{"Hooli Travel", "Flights to the partner summit", 2275, orderAwaitingInvoice, 0, 0, ""},
+		{"Initech Chairs", "Ergonomic chairs for the support team", 3150, orderInvoiceReview, 3, 30 * time.Hour, ""},
+		{"Umbrella Catering", "Catering for the quarterly review", 640, orderInvoiceApproval, 2, 26 * time.Hour, alice},
+		{"Acme Paper", "Envelopes and letterheads", 410, orderInvoiceApproval, 4, 2 * time.Hour, ""},
 	}
 
 	for i, seed := range seeds {
@@ -241,7 +272,7 @@ func (s *server) seed(ctx context.Context) error {
 			Supplier:    seed.supplier,
 			Description: seed.description,
 			Amount:      seed.amount,
-			TaskType:    seed.taskType,
+			Stage:       seed.stage,
 			Priority:    &seed.priority,
 			DueAt:       &due,
 		})
@@ -288,14 +319,19 @@ func (s *server) routes() error {
 	mux.Handle("/v1/notifications", notifications)
 	mux.Handle("/v1/notifications/", notifications)
 
-	// The application's own API: who is signed in, orders, and invoice records.
+	// The application's own API: who is signed in, the supplier registry,
+	// orders and their records, and purchase order documents.
 	mux.HandleFunc("GET /demo/users", listUsers)
 	mux.HandleFunc("GET /demo/session", session)
 	mux.HandleFunc("POST /demo/session", signIn)
 	mux.HandleFunc("DELETE /demo/session", signOut)
+	mux.HandleFunc("GET /demo/suppliers", listSuppliers)
 	mux.HandleFunc("GET /demo/orders", s.listOrders)
 	mux.HandleFunc("POST /demo/orders", s.placeOrder)
-	mux.HandleFunc("GET /demo/invoices/{id}", s.invoiceRecord)
+	mux.HandleFunc("GET /demo/orders/{id}", s.orderRecord)
+	mux.HandleFunc("POST /demo/orders/{id}/purchase-order/send", s.sendPurchaseOrder)
+	mux.HandleFunc("POST /demo/orders/{id}/purchase-order/upload", s.uploadPurchaseOrder)
+	mux.HandleFunc("GET /demo/documents/{id}", s.downloadDocument)
 	// Anything else under /demo/ is an API miss, not a page route.
 	mux.Handle("/demo/", http.NotFoundHandler())
 

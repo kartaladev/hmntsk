@@ -1,9 +1,11 @@
 import { createTheme } from "@mui/material/styles";
+import type {} from "@mui/x-data-grid/themeAugmentation";
 
 // One theme for the whole page, following Material UI's theming guidance:
 // light and dark colour schemes the viewer's system (or the toggle) picks
 // between, and CSS variables so switching schemes needs no re-render. App-wide
-// component defaults live here; one-off layout stays in `sx` where it is used.
+// component defaults live here, the data grid's included; one-off layout stays
+// in `sx` where it is used.
 export const theme = createTheme({
   cssVariables: { colorSchemeSelector: "class" },
   colorSchemes: {
@@ -42,8 +44,19 @@ export const theme = createTheme({
     MuiChip: {
       styleOverrides: { root: { fontWeight: 600 } },
     },
-    MuiTableCell: {
-      styleOverrides: { head: { fontWeight: 700 } },
+    // Every table in the page is a data grid, sitting inside a Paper that
+    // draws its border. A clicked row navigates rather than selects.
+    MuiDataGrid: {
+      defaultProps: {
+        density: "compact",
+        disableRowSelectionOnClick: true,
+        autoHeight: true,
+      },
+      styleOverrides: {
+        root: { border: 0 },
+        columnHeaderTitle: { fontWeight: 700 },
+        cell: { display: "flex", alignItems: "center" },
+      },
     },
   },
 });

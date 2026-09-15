@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { afterSignIn, invoicePath, matchPage, signInPath, type PageRoute } from "./pages";
+import { afterSignIn, matchPage, orderPath, signInPath, type PageRoute } from "./pages";
 
 describe("matchPage", () => {
   const cases: { name: string; path: string; expected: PageRoute }[] = [
@@ -10,27 +10,27 @@ describe("matchPage", () => {
     { name: "sign-in with nowhere to return to", path: "/login", expected: { page: "login" } },
     {
       name: "sign-in remembers where to return",
-      path: "/login?next=%2Finvoices%2FINV-101%2Fapprove",
-      expected: { page: "login", next: "/invoices/INV-101/approve" },
+      path: "/login?next=%2Forders%2FORD-101%2Fapprove-order",
+      expected: { page: "login", next: "/orders/ORD-101/approve-order" },
     },
-    { name: "an invoice on its own", path: "/invoices/INV-101", expected: { page: "invoice", invoiceId: "INV-101" } },
+    { name: "an order on its own", path: "/orders/ORD-101", expected: { page: "order", orderId: "ORD-101" } },
     {
-      name: "an invoice task, as hmntsk.route links it",
-      path: "/invoices/INV-101/approve?task=019243af-0001",
-      expected: { page: "invoice", invoiceId: "INV-101", activity: "approve", taskId: "019243af-0001" },
+      name: "an order task, as hmntsk.route links it",
+      path: "/orders/ORD-101/approve-order?task=approve-order-ORD-101",
+      expected: { page: "order", orderId: "ORD-101", activity: "approve-order", taskId: "approve-order-ORD-101" },
     },
     {
       name: "escaped path segments are decoded",
-      path: "/invoices/INV%2F7%20B/review",
-      expected: { page: "invoice", invoiceId: "INV/7 B", activity: "review" },
+      path: "/orders/ORD%2F7%20B/purchase-order",
+      expected: { page: "order", orderId: "ORD/7 B", activity: "purchase-order" },
     },
-    { name: "an invoice needs an ID", path: "/invoices/", expected: { page: "notFound" } },
-    { name: "too deep is not an invoice", path: "/invoices/INV-1/review/extra", expected: { page: "notFound" } },
+    { name: "too deep is not an order", path: "/orders/ORD-1/review-invoice/extra", expected: { page: "notFound" } },
     {
       name: "a badly escaped path is not found, rather than breaking the page",
-      path: "/invoices/%E0%A4%A",
+      path: "/orders/%E0%A4%A",
       expected: { page: "notFound" },
     },
+    { name: "invoices have no page of their own: they are on their order's", path: "/invoices/INV-101", expected: { page: "notFound" } },
     { name: "anything else is not found", path: "/elsewhere", expected: { page: "notFound" } },
   ];
 
@@ -51,9 +51,9 @@ describe("afterSignIn", () => {
     { name: "purchasing starts at orders", user: purchasing, expected: "/orders" },
     {
       name: "the page the viewer opened wins",
-      next: "/invoices/INV-101/approve?task=t-1",
+      next: "/orders/ORD-101/approve-order?task=t-1",
       user: purchasing,
-      expected: "/invoices/INV-101/approve?task=t-1",
+      expected: "/orders/ORD-101/approve-order?task=t-1",
     },
     { name: "another origin is never a return address", next: "https://evil.example/", user: approver, expected: "/" },
     { name: "a protocol-relative path is another origin", next: "//evil.example/", user: approver, expected: "/" },
@@ -68,14 +68,16 @@ describe("afterSignIn", () => {
 
 describe("paths", () => {
   it("sign-in carries the page to return to", () => {
-    expect(signInPath("/invoices/INV-1/review?task=t 1")).toBe("/login?next=%2Finvoices%2FINV-1%2Freview%3Ftask%3Dt+1");
+    expect(signInPath("/orders/ORD-1/review-invoice?task=t 1")).toBe(
+      "/login?next=%2Forders%2FORD-1%2Freview-invoice%3Ftask%3Dt+1",
+    );
   });
 
   it("sign-in from the inbox needs no return address", () => {
     expect(signInPath("/")).toBe("/login");
   });
 
-  it("an invoice path escapes its segments", () => {
-    expect(invoicePath("INV/7 B")).toBe("/invoices/INV%2F7%20B");
+  it("an order path escapes its segments", () => {
+    expect(orderPath("ORD/7 B")).toBe("/orders/ORD%2F7%20B");
   });
 });
