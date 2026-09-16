@@ -157,9 +157,14 @@ func TestListen(t *testing.T) {
 			assert: func(t *testing.T, l *listening, err error) {
 				require.ErrorIs(t, err, context.Canceled, "Listen returns its context's error, as the notify contract says")
 
-				counts, countErr := client.PubSubNumSub(t.Context(), l.broadcaster.Channel()).Result()
-				require.NoError(t, countErr)
-				assert.Zero(t, counts[l.broadcaster.Channel()], "the channel has no subscriber left")
+				// Listen closes its subscription as it returns, but the broker
+				// drops the subscriber in its own time, so the count is polled
+				// rather than read once.
+				assert.Eventually(t, func() bool {
+					counts, countErr := client.PubSubNumSub(t.Context(), l.broadcaster.Channel()).Result()
+
+					return countErr == nil && counts[l.broadcaster.Channel()] == 0
+				}, testWait, testTick, "the channel has no subscriber left")
 			},
 		},
 	}
