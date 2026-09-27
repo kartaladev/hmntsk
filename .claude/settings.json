@@ -1,5 +1,6 @@
 {
   "enabledPlugins": {
-    "cc-skills-golang@samber": true
+    "cc-skills-golang@samber": true,
+    "chrome-devtools-mcp@chrome-devtools-plugins": true
   }
 }

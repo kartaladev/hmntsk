@@ -4,3 +4,4 @@
 @.claude/rules/gopls-navigation.md
 @.claude/rules/golang-tdd.md
 @.claude/rules/library-design.md
+@.claude/rules/error-reproducible.md
